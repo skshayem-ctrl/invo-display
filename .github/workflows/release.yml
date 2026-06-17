@@ -1,0 +1,66 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build
+        run: |
+          mkdir -p build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          make -j4
+
+      - name: Package and sign
+        run: |
+          VERSION=${{ github.ref_name }}
+          VER_CLEAN=${VERSION#v}
+          TARBALL="invo-${VERSION}.tar.gz"
+
+          mkdir -p dist
+          STAGE=$(mktemp -d)
+          mkdir -p "$STAGE/bin" "$STAGE/scripts"
+          cp build/bin/lvglsim            "$STAGE/bin/lvglsim"
+          cp /home/intelli/invo_bridge.py "$STAGE/scripts/invo_bridge.py"
+          echo "$VER_CLEAN" > "$STAGE/version"
+          tar -czf "dist/$TARBALL" -C "$STAGE" .
+          rm -rf "$STAGE"
+
+          SHA256=$(sha256sum "dist/$TARBALL" | cut -d' ' -f1)
+
+          SIG_FILE=$(mktemp)
+          openssl dgst -sha256 -sign /etc/invo/update-private.pem \
+            -out "$SIG_FILE" "dist/$TARBALL"
+          SIG_B64=$(base64 -w0 "$SIG_FILE")
+          rm "$SIG_FILE"
+
+          cat > dist/manifest.json <<EOF
+          {
+            "version": "$VER_CLEAN",
+            "package": "$TARBALL",
+            "sha256": "$SHA256",
+            "signature": "$SIG_B64"
+          }
+          EOF
+
+          echo "TARBALL=$TARBALL" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "$VERSION" \
+            "dist/$TARBALL" \
+            "dist/manifest.json" \
+            --title "INVO $VERSION" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
