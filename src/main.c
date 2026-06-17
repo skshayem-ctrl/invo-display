@@ -18,10 +18,12 @@
  *
  ******************************************************************/
 #include <unistd.h>
+#include <getopt.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "invo/invo_screens.h"
 
 #include "lvgl/lvgl.h"
 #include "lvgl/demos/lv_demos.h"
@@ -39,7 +41,7 @@ static void print_usage(void);
  * has specified one on the command line */
 static char * selected_backend;
 
-/* Global simulator settings, defined in lv_linux_backend.c */
+/* Global simulator settings, defined in lv_linux_backend.c */                                                                                                                                                                                                                                                                                                      
 extern simulator_settings_t settings;
 
 
@@ -86,7 +88,7 @@ static void configure_simulator(int argc, char ** argv)
     const char * env_h = getenv("LV_SIM_WINDOW_HEIGHT");
     /* Default values */
     settings.window_width = atoi(env_w ? env_w : "800");
-    settings.window_height = atoi(env_h ? env_h : "480");
+    settings.window_height = atoi(env_h ? env_h : "800");
 
     /* Parse the command-line options. */
     while((opt = getopt(argc, argv, "b:fmW:H:R:BVh")) != -1) {
@@ -184,8 +186,9 @@ int main(int argc, char ** argv)
 #endif
 
     /*Create a Demo*/
-    lv_demo_widgets();
-    lv_demo_widgets_start_slideshow();
+	invo_screens_init();
+    //lv_demo_widgets();
+   // lv_demo_widgets_start_slideshow();
 
     /* Enter the run loop of the selected backend */
     driver_backends_run_loop();
