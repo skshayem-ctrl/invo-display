@@ -115,7 +115,7 @@ void invo_home_screen_create(lv_obj_t * scr)
     battery_pct_label = lv_label_create(scr);
     lv_obj_set_style_text_font(battery_pct_label, &lv_font_montserrat_40, 0);
     lv_obj_set_style_text_color(battery_pct_label, C_WHITE, 0);
-    lv_label_set_text(battery_pct_label, "0%");
+    lv_label_set_text(battery_pct_label, "--%");
     lv_obj_align(battery_pct_label, LV_ALIGN_CENTER, 0, -15);
 
     lv_obj_t * batt_title = lv_label_create(scr);
