@@ -29,6 +29,12 @@ void nav_to_wifi(void)    { invo_wifi_show_list(); }
 
 static void back_btn_cb(lv_event_t * e) { LV_UNUSED(e); nav_to_home(); }
 
+static void swipe_back_cb(lv_event_t * e) {
+    LV_UNUSED(e);
+    if (lv_indev_get_gesture_dir(lv_indev_active()) == LV_DIR_RIGHT)
+        nav_to_home();
+}
+
 static void output_on_cb(lv_event_t * e) {
     lv_obj_t * btn = lv_event_get_target(e);
     FILE * f = fopen("/home/intelli/invo_cmd", "w");
@@ -71,6 +77,7 @@ static void make_back_button(lv_obj_t * scr) {
     lv_obj_set_style_text_color(lbl, C_WHITE, 0);
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_24, 0);
     lv_obj_center(lbl);
+    lv_obj_add_event_cb(scr, swipe_back_cb, LV_EVENT_GESTURE, NULL);
 }
 
 static void make_logo(lv_obj_t * scr) {
