@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <string.h>
 
 static lv_obj_t * home_scr;
 static lv_obj_t * solar_scr;
