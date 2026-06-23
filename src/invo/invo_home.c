@@ -124,6 +124,7 @@ void invo_home_screen_create(lv_obj_t * scr)
         lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_opa(btn, LV_OPA_TRANSP, 0);
         lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_pad_all(btn, 0, 0);
         lv_obj_add_event_cb(btn, nav_cbs[i], LV_EVENT_CLICKED, NULL);
 
         lv_obj_t * ico = lv_label_create(btn);
