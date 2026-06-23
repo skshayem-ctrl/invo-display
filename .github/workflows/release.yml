@@ -34,6 +34,7 @@ jobs:
           mkdir -p "$STAGE/bin" "$STAGE/scripts"
           cp build/bin/lvglsim            "$STAGE/bin/lvglsim"
           cp /home/intelli/invo_bridge.py "$STAGE/scripts/invo_bridge.py"
+          cp scripts/invo-updater        "$STAGE/scripts/invo-updater"
           echo "$VER_CLEAN" > "$STAGE/version"
           tar -czf "dist/$TARBALL" -C "$STAGE" .
           rm -rf "$STAGE"
