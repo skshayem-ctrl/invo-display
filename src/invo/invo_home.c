@@ -10,11 +10,10 @@ static lv_obj_t * battery_arc;
 static lv_obj_t * battery_pct_label;
 static lv_obj_t * backup_label;
 
-
 static void clock_timer_cb(lv_timer_t * timer)
 {
     LV_UNUSED(timer);
-    time_t now = time(NULL);
+    time_t now    = time(NULL);
     struct tm * t = localtime(&now);
     char time_buf[16], date_buf[32];
     strftime(time_buf, sizeof(time_buf), "%I:%M %p", t);
@@ -24,14 +23,50 @@ static void clock_timer_cb(lv_timer_t * timer)
 }
 
 /* Click callbacks */
-static void solar_click_cb(lv_event_t * e)     { LV_UNUSED(e); nav_to_solar();     }
-static void batt_click_cb(lv_event_t * e)      { LV_UNUSED(e); nav_to_battery();   }
-static void weather_click_cb(lv_event_t * e)   { LV_UNUSED(e); nav_to_weather();   }
-static void home_load_click_cb(lv_event_t * e) { LV_UNUSED(e); nav_to_home_load(); }
-static void wifi_click_cb(lv_event_t * e)      { LV_UNUSED(e); nav_to_wifi();      }
+static void solar_click_cb(lv_event_t * e)
+{
+    LV_UNUSED(e);
+    nav_to_solar();
+}
+static void batt_click_cb(lv_event_t * e)
+{
+    LV_UNUSED(e);
+    nav_to_battery();
+}
+static void weather_click_cb(lv_event_t * e)
+{
+    LV_UNUSED(e);
+    nav_to_weather();
+}
+static void home_load_click_cb(lv_event_t * e)
+{
+    LV_UNUSED(e);
+    nav_to_home_load();
+}
+static void wifi_click_cb(lv_event_t * e)
+{
+    LV_UNUSED(e);
+    nav_to_wifi();
+}
+static void settings_click_cb(lv_event_t * e)
+{
+    LV_UNUSED(e);
+    nav_to_settings();
+}
+static void history_click_cb(lv_event_t * e)
+{
+    LV_UNUSED(e);
+    nav_to_history();
+}
+static void alerts_click_cb(lv_event_t * e)
+{
+    LV_UNUSED(e);
+    nav_to_alerts();
+}
 
 /* Helper: invisible click zone */
-static lv_obj_t * make_click_zone(lv_obj_t * scr, int w, int h, int x, int y, lv_event_cb_t cb) {
+static lv_obj_t * make_click_zone(lv_obj_t * scr, int w, int h, int x, int y, lv_event_cb_t cb)
+{
     lv_obj_t * zone = lv_obj_create(scr);
     lv_obj_set_size(zone, w, h);
     lv_obj_align(zone, LV_ALIGN_CENTER, x, y);
@@ -77,22 +112,31 @@ void invo_home_screen_create(lv_obj_t * scr)
     lv_label_set_text(date_label, "Wednesday, June 1");
     lv_obj_align(date_label, LV_ALIGN_TOP_MID, 0, 152);
 
-    /* Nav items: icon + label */
-    const char * nav_icons[]  = { LV_SYMBOL_SETTINGS, LV_SYMBOL_LIST, LV_SYMBOL_BELL };
-    const char * nav_labels[] = { "Settings",          "History",      "Alerts"       };
-    int nav_x[] = { -220, 0, 220 };
+    /* Nav items: icon + label (clickable) */
+    const char * nav_icons[]  = {LV_SYMBOL_SETTINGS, LV_SYMBOL_LIST, LV_SYMBOL_BELL};
+    const char * nav_labels[] = {"Settings", "History", "Alerts"};
+    int nav_x[]               = {-220, 0, 220};
+    lv_event_cb_t nav_cbs[]   = {settings_click_cb, history_click_cb, alerts_click_cb};
     for(int i = 0; i < 3; i++) {
-        lv_obj_t * ico = lv_label_create(scr);
+        lv_obj_t * btn = lv_obj_create(scr);
+        lv_obj_set_size(btn, 80, 50);
+        lv_obj_align(btn, LV_ALIGN_TOP_MID, nav_x[i], 200);
+        lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_opa(btn, LV_OPA_TRANSP, 0);
+        lv_obj_remove_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_event_cb(btn, nav_cbs[i], LV_EVENT_CLICKED, NULL);
+
+        lv_obj_t * ico = lv_label_create(btn);
         lv_label_set_text(ico, nav_icons[i]);
         lv_obj_set_style_text_color(ico, C_GRAY, 0);
         lv_obj_set_style_text_font(ico, &lv_font_montserrat_18, 0);
-        lv_obj_align(ico, LV_ALIGN_TOP_MID, nav_x[i], 207);
+        lv_obj_align(ico, LV_ALIGN_TOP_MID, 0, 0);
 
-        lv_obj_t * txt = lv_label_create(scr);
+        lv_obj_t * txt = lv_label_create(btn);
         lv_label_set_text(txt, nav_labels[i]);
         lv_obj_set_style_text_color(txt, C_GRAY, 0);
         lv_obj_set_style_text_font(txt, &lv_font_montserrat_12, 0);
-        lv_obj_align(txt, LV_ALIGN_TOP_MID, nav_x[i], 229);
+        lv_obj_align(txt, LV_ALIGN_BOTTOM_MID, 0, 0);
     }
 
     /* Battery arc */
@@ -312,7 +356,7 @@ void invo_home_screen_create(lv_obj_t * scr)
     lv_obj_set_style_text_font(logo2, &lv_font_montserrat_26, 0);
 
     /* ── Click zones ── */
-    make_click_zone(scr, 250, 250, 0, 0, batt_click_cb);   /* Battery arc */
+    make_click_zone(scr, 250, 250, 0, 0, batt_click_cb); /* Battery arc */
 
     /* Clock timer */
     lv_timer_create(clock_timer_cb, 1000, NULL);

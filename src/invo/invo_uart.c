@@ -338,3 +338,17 @@ void invo_uart_init(void) {
 
     lv_timer_create(uart_poll_cb, 200, NULL);
 }
+
+void invo_uart_get_live(float *batt_pct, float *solar_kw, float *load_kw,
+                         int *fault, int *bypassing, int *inv_on, float *batt_temp) {
+    pthread_mutex_lock(&ud_lock);
+    if (batt_pct)  *batt_pct  = ud.batt_pct;
+    if (solar_kw)  *solar_kw  = ud.solar_kw;
+    if (load_kw)   *load_kw   = ud.load_kw;
+    if (fault)     *fault     = ud.fault;
+    if (bypassing) *bypassing = ud.bypassing;
+    if (inv_on)    *inv_on    = ud.inv_on;
+    if (batt_temp) *batt_temp = ud.batt_temp;
+    pthread_mutex_unlock(&ud_lock);
+}
+
