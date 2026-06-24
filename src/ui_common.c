@@ -13,30 +13,7 @@
 
 /* ── global state ──────────────────────────────────────────────── */
 
-gd_t gd = {
-    .solar_kw   = 2.4f,
-    .load_kw    = 1.6f,
-    .batt_pct   = 78,
-    .backup_h   = 3,
-    .backup_m   = 45,
-    .chg_kw     = 2.1f,
-    .batt_cap   = 10.2f,
-    .batt_usable= 8.0f,
-    .batt_health= 92,
-    .batt_cycles= 312,
-    .batt_life  = 8.2f,
-    .batt_temp  = 26.0f,
-    .chg_h      = 1,
-    .chg_m      = 20,
-    .wx_c       = 28,
-    .humidity   = 52,
-    .aqi        = 42,
-    .voltage    = 380,
-    .current    = 6.3f,
-    .today_solar_kwh = 0.0f,
-    .today_load_kwh  = 0.0f,
-    .month_kwh  = 156.4f,
-};
+gd_t gd = {0};
 
 app_t app;
 
@@ -122,6 +99,41 @@ lv_obj_t *mk_card(lv_obj_t *par, int x, int y, int w, int h,
     return c;
 }
 
+/* Pi-style stat card — label top-left (gray/12), value centred (col/20), sub bottom-left (col/12) */
+lv_obj_t *make_stat_card(lv_obj_t *scr, int w, int h, int ox, int oy,
+                          const char *label, const char *value, const char *sub,
+                          lv_color_t val_col, lv_color_t sub_col)
+{
+    lv_obj_t *card = lv_obj_create(scr);
+    lv_obj_set_size(card, w, h);
+    lv_obj_align(card, LV_ALIGN_CENTER, ox, oy);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0x161616), 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(0x2a2a2a), 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_radius(card, 12, 0);
+    lv_obj_set_style_pad_all(card, 10, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *lbl = lv_label_create(card);
+    lv_label_set_text(lbl, label);
+    lv_obj_set_style_text_color(lbl, C_GRAY, 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
+    lv_obj_align(lbl, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    lv_obj_t *val = lv_label_create(card);
+    lv_label_set_text(val, value);
+    lv_obj_set_style_text_color(val, val_col, 0);
+    lv_obj_set_style_text_font(val, &lv_font_montserrat_20, 0);
+    lv_obj_align(val, LV_ALIGN_CENTER, 0, 0);
+
+    lv_obj_t *sub_lbl = lv_label_create(card);
+    lv_label_set_text(sub_lbl, sub);
+    lv_obj_set_style_text_color(sub_lbl, sub_col, 0);
+    lv_obj_set_style_text_font(sub_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_align(sub_lbl, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    return val;
+}
+
 lv_obj_t *mk_row(lv_obj_t *par)
 {
     lv_obj_t *r = lv_obj_create(par);
@@ -196,22 +208,18 @@ lv_obj_t *add_detail_header(lv_obj_t *par, const char *title)
            LV_ALIGN_TOP_MID, 0, 46);
 
     lv_obj_t *back = lv_btn_create(par);
-    lv_obj_set_size(back, 110, 42);
-    lv_obj_align(back, LV_ALIGN_BOTTOM_MID, 0, -72);
-    lv_obj_set_style_bg_color(back, C_DGRAY, 0);
-    lv_obj_set_style_radius(back, 21, 0);
+    lv_obj_set_size(back, 72, 72);
+    lv_obj_align(back, LV_ALIGN_BOTTOM_MID, -200, -90);
+    lv_obj_set_style_bg_color(back, lv_color_hex(0x1e1e1e), 0);
+    lv_obj_set_style_radius(back, 36, 0);
+    lv_obj_set_style_border_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_border_width(back, 1, 0);
     lv_obj_add_event_cb(back, go_main_cb, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *row = mk_row(back);
-    lv_obj_center(row);
-    lv_obj_t *arr = lv_label_create(row);
+    lv_obj_t *arr = lv_label_create(back);
     lv_label_set_text(arr, LV_SYMBOL_LEFT);
     lv_obj_set_style_text_color(arr, C_WHITE, 0);
-    lv_obj_set_style_text_font(arr, &lv_font_montserrat_16, 0);
-    lv_obj_t *lbl = lv_label_create(row);
-    lv_label_set_text(lbl, "Home");
-    lv_obj_set_style_text_color(lbl, C_WHITE, 0);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(arr, &lv_font_montserrat_24, 0);
+    lv_obj_center(arr);
     return wifi;
 }
 
@@ -336,19 +344,30 @@ void clock_tick_cb(lv_timer_t *t)
 void data_tick_cb(lv_timer_t *t)
 {
 #ifndef ESP_PLATFORM
-    /* On Pi: pull real inverter data from HAL (invo_bridge shared mem) */
+    /* On Pi: pull all fields from HAL (invo_bridge shared mem) */
     invo_data_t _d;
     hal_data_get(&_d);
-    if (_d.batt_pct > 0)   gd.batt_pct  = (int)_d.batt_pct;
-    if (_d.solar_kw > 0)   gd.solar_kw  = _d.solar_kw;
-    if (_d.load_kw  > 0)   gd.load_kw   = _d.load_kw;
-    if (_d.batt_v   > 0)   gd.voltage   = (int)_d.batt_v;
-    if (_d.batt_a   != 0)  gd.current   = _d.batt_a;
-    if (_d.batt_temp > 0)  gd.batt_temp = _d.batt_temp;
+    if (_d.batt_pct > 0)        gd.batt_pct  = (int)_d.batt_pct;
+    if (_d.solar_kw > 0)        gd.solar_kw  = _d.solar_kw;
+    if (_d.load_kw  > 0)        gd.load_kw   = _d.load_kw;
+    if (_d.batt_v   > 0)      { gd.voltage   = (int)_d.batt_v; gd.batt_v = _d.batt_v; }
+    if (_d.batt_a   != 0)     { gd.current   = _d.batt_a;      gd.batt_a = _d.batt_a; }
+    if (_d.batt_temp > 0)       gd.batt_temp = _d.batt_temp;
     if (_d.batt_backup_min > 0) {
         gd.backup_h = _d.batt_backup_min / 60;
         gd.backup_m = _d.batt_backup_min % 60;
     }
+    if (_d.solar_v  > 0)        gd.pv_v      = _d.solar_v;
+    if (_d.solar_a  != 0)       gd.pv_a      = _d.solar_a;
+    if (_d.grid_v   > 0)        gd.grid_v    = _d.grid_v;
+    if (_d.grid_hz  > 0)        gd.grid_hz   = _d.grid_hz;
+    if (_d.out_v    > 0)        gd.out_v     = _d.out_v;
+    if (_d.out_hz   > 0)        gd.out_hz    = _d.out_hz;
+    if (_d.out_a    != 0)       gd.out_a     = _d.out_a;
+    gd.inv_on    = _d.inv_on;
+    gd.bypassing = _d.bypassing;
+    gd.fault     = _d.fault;
+    gd.ac_chg    = _d.ac_chg;
 #endif
 
     lv_color_t wifi_col = wifi_manager_connected() ? C_GREEN : C_GRAY;
@@ -360,103 +379,136 @@ void data_tick_cb(lv_timer_t *t)
 
 #ifdef ESP_PLATFORM
     uint32_t r = esp_random();
-#else
-    uint32_t r = (uint32_t)rand();
-#endif
-
-    /* Only simulate fields not yet overridden by real UART data */
+    /* Simulate on ESP32 when no real data yet */
     if (!uart_solar_valid()) {
         gd.solar_kw += (r & 1) ? 0.15f : -0.15f;
         if (gd.solar_kw < 0.4f) gd.solar_kw = 0.4f;
         if (gd.solar_kw > 3.8f) gd.solar_kw = 3.8f;
     }
     r >>= 1;
-
     if (!uart_load_valid()) {
         gd.load_kw += (r & 1) ? 0.10f : -0.10f;
         if (gd.load_kw < 0.6f) gd.load_kw = 0.6f;
         if (gd.load_kw > 2.8f) gd.load_kw = 2.8f;
     }
     r >>= 1;
-
-    float net = gd.solar_kw - gd.load_kw;
-    /* battery % driven by UART, not simulated */
-
-    float backup = (gd.batt_pct * gd.batt_usable) / (gd.load_kw * 100.0f);
-    gd.backup_h = (int)backup;
-    gd.backup_m = (int)((backup - gd.backup_h) * 60.0f);
-
-    gd.chg_kw = (net > 0.0f) ? net : 0.0f;
-    if (gd.chg_kw > 0.1f) {
-        float rem = (100 - gd.batt_pct) * gd.batt_usable / 100.0f;
-        float h   = rem / gd.chg_kw;
-        gd.chg_h  = (int)h;
-        gd.chg_m  = (int)((h - gd.chg_h) * 60.0f);
-    }
-
-    gd.batt_temp += (r & 1) ? 0.5f : -0.5f; r >>= 1;
-    if (gd.batt_temp < 22.0f) gd.batt_temp = 22.0f;
-    if (gd.batt_temp > 40.0f) gd.batt_temp = 40.0f;
-
-    if (!uart_voltage_valid()) {
-        gd.voltage += (r & 1) ? 1 : -1;
-        if (gd.voltage < 370) gd.voltage = 370;
-        if (gd.voltage > 392) gd.voltage = 392;
-    }
-    r >>= 1;
-
-    if (!uart_current_valid())
-        gd.current = (gd.solar_kw * 1000.0f) / (float)gd.voltage;
-
     gd.today_solar_kwh += gd.solar_kw * (2.0f / 3600.0f);
     gd.today_load_kwh  += gd.load_kw  * (2.0f / 3600.0f);
-
     bool batt_ok = uart_batt_valid();
+#else
+    gd.today_solar_kwh += gd.solar_kw * (2.0f / 3600.0f);
+    gd.today_load_kwh  += gd.load_kw  * (2.0f / 3600.0f);
+    bool batt_ok = (gd.batt_pct > 0);
+#endif
+
     lv_color_t arc_col = batt_ok ? (gd.batt_pct >= 50 ? C_GREEN :
                                      gd.batt_pct >= 20 ? C_AMBER : C_RED)
                                   : C_GRAY;
 
-    /* main screen */
-    lv_lbl_setf(app.w_solar_val, "%.1f kw", gd.solar_kw);
-    lv_lbl_setf(app.w_load_val,  "%.1f kw", gd.load_kw);
+    /* ── Main screen ─────────────────────────────────────────────── */
+    if (gd.solar_kw > 0)
+        lv_lbl_setf(app.w_solar_val, "%.1f kw", gd.solar_kw);
+    else if (app.w_solar_val)
+        lv_label_set_text(app.w_solar_val, "--");
+
+    if (gd.load_kw > 0)
+        lv_lbl_setf(app.w_load_val, "%.1f kw", gd.load_kw);
+    else if (app.w_load_val)
+        lv_label_set_text(app.w_load_val, "--");
+
     if (app.w_batt_pct)
         batt_ok ? lv_label_set_text_fmt(app.w_batt_pct, "%d%%", gd.batt_pct)
                 : lv_label_set_text(app.w_batt_pct, "--");
+
     if (app.w_batt_backup)
-        lv_label_set_text_fmt(app.w_batt_backup, "%dh %dm",
-                              gd.backup_h, gd.backup_m);
+        batt_ok ? lv_label_set_text_fmt(app.w_batt_backup, "%dh %dm",
+                                        gd.backup_h, gd.backup_m)
+                : lv_label_set_text(app.w_batt_backup, "--");
+
     if (app.w_batt_arc) {
         lv_arc_set_value(app.w_batt_arc, batt_ok ? gd.batt_pct : 0);
         lv_obj_set_style_arc_color(app.w_batt_arc, arc_col, LV_PART_INDICATOR);
     }
 
-    /* battery detail */
+    /* ── Battery detail ──────────────────────────────────────────── */
     if (app.w_bd_pct)
         batt_ok ? lv_label_set_text_fmt(app.w_bd_pct, "%d%%", gd.batt_pct)
                 : lv_label_set_text(app.w_bd_pct, "--");
-    lv_lbl_setf(app.w_bd_chg, "%.1f kW", gd.chg_kw);
+    if (app.w_bd_batt_v)
+        gd.batt_v > 0 ? lv_lbl_setf(app.w_bd_batt_v, "%.1f V", gd.batt_v)
+                       : lv_label_set_text(app.w_bd_batt_v, "--");
+    if (app.w_bd_batt_a)
+        lv_lbl_setf(app.w_bd_batt_a, "%.1f A", gd.batt_a);
+    if (app.w_bd_chg)
+        lv_lbl_setf(app.w_bd_chg, "%.1f kW", gd.chg_kw);
+    if (app.w_bd_tmp)
+        gd.batt_temp > 0 ? lv_lbl_setf(app.w_bd_tmp, "%.1f\xC2\xB0""C", gd.batt_temp)
+                         : lv_label_set_text(app.w_bd_tmp, "--");
     if (app.w_bd_bkp)
-        lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm", gd.backup_h, gd.backup_m);
-    if (app.w_bd_full && gd.chg_kw > 0.1f)
-        lv_label_set_text_fmt(app.w_bd_full, "%dh %dm", gd.chg_h, gd.chg_m);
-    lv_lbl_setf(app.w_bd_tmp, "%.1f\xC2\xB0""C", gd.batt_temp);
+        batt_ok ? lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm",
+                                        gd.backup_h, gd.backup_m)
+                : lv_label_set_text(app.w_bd_bkp, "--");
+    /* status flags */
+    if (app.w_bd_inv_on) {
+        lv_label_set_text(app.w_bd_inv_on, gd.inv_on ? "ON" : "OFF");
+        lv_obj_set_style_text_color(app.w_bd_inv_on,
+            gd.inv_on ? C_GREEN : C_GRAY, 0);
+    }
+    if (app.w_bd_bypass) {
+        lv_label_set_text(app.w_bd_bypass, gd.bypassing ? "YES" : "NO");
+        lv_obj_set_style_text_color(app.w_bd_bypass,
+            gd.bypassing ? C_AMBER : C_GRAY, 0);
+    }
+    if (app.w_bd_fault) {
+        lv_label_set_text(app.w_bd_fault, gd.fault ? "YES" : "NO");
+        lv_obj_set_style_text_color(app.w_bd_fault,
+            gd.fault ? C_RED : C_GRAY, 0);
+    }
+    if (app.w_bd_ac_chg) {
+        lv_label_set_text(app.w_bd_ac_chg, gd.ac_chg ? "YES" : "NO");
+        lv_obj_set_style_text_color(app.w_bd_ac_chg,
+            gd.ac_chg ? C_BLUE : C_GRAY, 0);
+    }
 
-    /* solar detail */
-    lv_lbl_setf(app.w_sd_kw,  "%.1f kw",  gd.solar_kw);
-    lv_lbl_setf(app.w_sd_kwh, "%.1f kWh", gd.today_solar_kwh);
+    /* ── Solar detail ────────────────────────────────────────────── */
+    if (app.w_sd_kw)
+        gd.solar_kw > 0 ? lv_lbl_setf(app.w_sd_kw, "%.1f kw", gd.solar_kw)
+                        : lv_label_set_text(app.w_sd_kw, "--");
+    if (app.w_sd_grid_hz)
+        gd.grid_hz > 0 ? lv_lbl_setf(app.w_sd_grid_hz, "%.1f Hz", gd.grid_hz)
+                       : lv_label_set_text(app.w_sd_grid_hz, "--");
+    if (app.w_sd_grid_v)
+        gd.grid_v > 0 ? lv_lbl_setf(app.w_sd_grid_v, "%.0f V", gd.grid_v)
+                      : lv_label_set_text(app.w_sd_grid_v, "--");
     if (app.w_sd_volt)
-        lv_label_set_text_fmt(app.w_sd_volt, "%d V", gd.voltage);
-    lv_lbl_setf(app.w_sd_cur, "%.1f A", gd.current);
+        gd.pv_v > 0 ? lv_lbl_setf(app.w_sd_volt, "%.0f V", gd.pv_v)
+                    : lv_label_set_text(app.w_sd_volt, "--");
+    if (app.w_sd_cur)
+        gd.pv_a > 0 ? lv_lbl_setf(app.w_sd_cur, "%.1f A", gd.pv_a)
+                    : lv_label_set_text(app.w_sd_cur, "--");
     if (app.w_sd_chart && app.w_sd_ser)
         lv_chart_set_next_value(app.w_sd_chart, app.w_sd_ser,
-                                (lv_value_precise_t)(gd.solar_kw * 1000.0f));
+                                (lv_value_precise_t)(gd.solar_kw * 10.0f));
 
-    /* home load detail */
-    lv_lbl_setf(app.w_ld_kw,  "%.1f kw",  gd.load_kw);
-    lv_lbl_setf(app.w_ld_kwh, "%.1f kWh", gd.today_load_kwh);
+    /* ── Home load detail ────────────────────────────────────────── */
+    if (app.w_ld_kw)
+        gd.load_kw > 0 ? lv_lbl_setf(app.w_ld_kw, "%.1f kw", gd.load_kw)
+                       : lv_label_set_text(app.w_ld_kw, "--");
+    if (app.w_ld_out_v)
+        gd.out_v > 0 ? lv_lbl_setf(app.w_ld_out_v, "%.0f V", gd.out_v)
+                     : lv_label_set_text(app.w_ld_out_v, "--");
+    if (app.w_ld_out_hz)
+        gd.out_hz > 0 ? lv_lbl_setf(app.w_ld_out_hz, "%.1f Hz", gd.out_hz)
+                      : lv_label_set_text(app.w_ld_out_hz, "--");
+    if (app.w_ld_out_w)
+        gd.load_kw > 0 ? lv_lbl_setf(app.w_ld_out_w, "%.0f W", gd.load_kw * 1000.0f)
+                       : lv_label_set_text(app.w_ld_out_w, "--");
+    if (app.w_ld_out_a)
+        gd.out_a > 0 ? lv_lbl_setf(app.w_ld_out_a, "%.1f A", gd.out_a)
+                     : lv_label_set_text(app.w_ld_out_a, "--");
     if (app.w_ld_chart && app.w_ld_ser)
         lv_chart_set_next_value(app.w_ld_chart, app.w_ld_ser,
-                                (lv_value_precise_t)(gd.load_kw * 1000.0f));
+                                (lv_value_precise_t)(gd.load_kw * 10.0f));
 
-    /* weather widgets are managed exclusively by weather_service */
+    /* weather widgets managed by weather_service */
 }
