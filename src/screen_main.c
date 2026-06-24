@@ -18,8 +18,6 @@ lv_obj_t *screen_main_create(void)
                         &lv_font_montserrat_14, C_GRAY,
                         LV_ALIGN_TOP_MID, 0, 108);
 
-    add_hdiv(scr, 134, 520);
-
     /* nav row: Settings | History | Alerts */
     const struct { const char *sym; const char *lbl; int xoff; lv_event_cb_t cb; } nav[] = {
         {LV_SYMBOL_SETTINGS, "Settings", -165, go_settings_cb},
@@ -43,12 +41,10 @@ lv_obj_t *screen_main_create(void)
         lv_obj_align(lb, LV_ALIGN_BOTTOM_MID, 0, 0);
     }
 
-    add_hdiv(scr, 200, 520);
-
-    /* ── Solar Input (left) ────────────────────────────────────── */
+    /* ── Solar Input (left, centre-relative) ──────────────────────── */
     {
         lv_obj_t *c = mk_cont(scr, 120, 185);
-        lv_obj_align(c, LV_ALIGN_LEFT_MID, 60, -30);
+        lv_obj_align(c, LV_ALIGN_CENTER, -248, 0);
         lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(c, go_solar_cb, LV_EVENT_CLICKED, NULL);
 
@@ -86,7 +82,7 @@ lv_obj_t *screen_main_create(void)
         lv_obj_clear_flag(uln, LV_OBJ_FLAG_CLICKABLE);
     }
 
-    /* ── Battery Arc (centre) ──────────────────────────────────── */
+    /* ── Battery Arc (centre) ─────────────────────────────────────── */
     {
         lv_obj_t *ba = mk_cont(scr, 224, 224);
         lv_obj_align(ba, LV_ALIGN_CENTER, 0, 12);
@@ -131,10 +127,10 @@ lv_obj_t *screen_main_create(void)
                LV_ALIGN_CENTER, 0, 74);
     }
 
-    /* ── Home Load (right) ─────────────────────────────────────── */
+    /* ── Home Load (right, centre-relative) ───────────────────────── */
     {
         lv_obj_t *c = mk_cont(scr, 120, 185);
-        lv_obj_align(c, LV_ALIGN_RIGHT_MID, -60, -30);
+        lv_obj_align(c, LV_ALIGN_CENTER, 248, 0);
         lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(c, go_load_cb, LV_EVENT_CLICKED, NULL);
 
@@ -172,19 +168,17 @@ lv_obj_t *screen_main_create(void)
         lv_obj_clear_flag(uln, LV_OBJ_FLAG_CLICKABLE);
     }
 
-    add_hdiv(scr, 460, 480);
-
-    /* ── Bottom info row ───────────────────────────────────────── */
+    /* ── Bottom info row (centre-relative) ────────────────────────── */
     /* Weather */
     {
         lv_obj_t *c = mk_cont(scr, 140, 95);
-        lv_obj_align(c, LV_ALIGN_BOTTOM_LEFT, 145, -98);
+        lv_obj_align(c, LV_ALIGN_CENTER, -182, 218);
         lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(c, go_wx_cb, LV_EVENT_CLICKED, NULL);
 
         lv_obj_t *row = mk_row(c);
         lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 4);
-        lv_obj_t *ic = weather_icon_create(row, 26, WX_ICON_TEMPERATURE);
+        weather_icon_create(row, 26, WX_ICON_TEMPERATURE);
         app.w_main_wx_tmp = lv_label_create(row);
         lv_label_set_text(app.w_main_wx_tmp, "--\xC2\xB0""C");
         lv_obj_set_style_text_color(app.w_main_wx_tmp, C_WHITE, 0);
@@ -196,13 +190,13 @@ lv_obj_t *screen_main_create(void)
     /* Air Quality */
     {
         lv_obj_t *c = mk_cont(scr, 140, 95);
-        lv_obj_align(c, LV_ALIGN_BOTTOM_MID, 0, -98);
+        lv_obj_align(c, LV_ALIGN_CENTER, 0, 218);
         lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(c, go_wx_cb, LV_EVENT_CLICKED, NULL);
 
         lv_obj_t *row = mk_row(c);
         lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 4);
-        lv_obj_t *ic = weather_icon_create(row, 26, WX_ICON_AQI);
+        weather_icon_create(row, 26, WX_ICON_AQI);
         app.w_main_wx_aqi = lv_label_create(row);
         lv_label_set_text(app.w_main_wx_aqi, "--");
         lv_obj_set_style_text_color(app.w_main_wx_aqi, C_WHITE, 0);
@@ -216,13 +210,13 @@ lv_obj_t *screen_main_create(void)
     /* Humidity */
     {
         lv_obj_t *c = mk_cont(scr, 140, 95);
-        lv_obj_align(c, LV_ALIGN_BOTTOM_RIGHT, -145, -98);
+        lv_obj_align(c, LV_ALIGN_CENTER, 182, 218);
         lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(c, go_wx_cb, LV_EVENT_CLICKED, NULL);
 
         lv_obj_t *row = mk_row(c);
         lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 4);
-        lv_obj_t *ic = weather_icon_create(row, 26, WX_ICON_HUMIDITY);
+        weather_icon_create(row, 26, WX_ICON_HUMIDITY);
         app.w_main_wx_hum = lv_label_create(row);
         lv_label_set_text(app.w_main_wx_hum, "--%");
         lv_obj_set_style_text_color(app.w_main_wx_hum, C_WHITE, 0);
@@ -234,7 +228,7 @@ lv_obj_t *screen_main_create(void)
 
     add_logo(scr, -30);
 
-    /* ── Overload warning ring (hidden) ───────────────────────── */
+    /* ── Overload warning ring (hidden) ───────────────────────────── */
     app.w_warn_ring = lv_arc_create(scr);
     lv_obj_set_size(app.w_warn_ring, 228, 228);
     lv_obj_align(app.w_warn_ring, LV_ALIGN_CENTER, 0, 12);
@@ -250,7 +244,7 @@ lv_obj_t *screen_main_create(void)
     lv_obj_clear_flag(app.w_warn_ring, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(app.w_warn_ring, LV_OBJ_FLAG_HIDDEN);
 
-    /* ── Overload modal dialog (hidden) ───────────────────────── */
+    /* ── Overload modal dialog (hidden) ───────────────────────────── */
     app.w_warn_dlg = lv_obj_create(scr);
     lv_obj_set_size(app.w_warn_dlg, 390, 210);
     lv_obj_align(app.w_warn_dlg, LV_ALIGN_CENTER, 0, 0);
