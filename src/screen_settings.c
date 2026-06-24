@@ -220,7 +220,7 @@ lv_obj_t *screen_settings_create(void)
 
     /* ── FOTA status overlay (hidden until Check Update tapped) ─── */
     s_fota_panel = lv_obj_create(scr);
-    lv_obj_set_size(s_fota_panel, 720, 720);
+    lv_obj_set_size(s_fota_panel, lv_pct(100), lv_pct(100));
     lv_obj_set_pos(s_fota_panel, 0, 0);
     lv_obj_set_style_bg_color(s_fota_panel, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(s_fota_panel, LV_OPA_80, 0);

@@ -240,7 +240,7 @@ lv_obj_t *screen_wifi_create(void)
 
     /* ── Password overlay (starts hidden) ──────────────────────── */
     s_pw_panel = lv_obj_create(scr);
-    lv_obj_set_size(s_pw_panel, 720, 720);
+    lv_obj_set_size(s_pw_panel, lv_pct(100), lv_pct(100));
     lv_obj_set_pos(s_pw_panel, 0, 0);
     lv_obj_set_style_bg_color(s_pw_panel, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(s_pw_panel, LV_OPA_90, 0);
