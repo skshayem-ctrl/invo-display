@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include "../hal/hal.h"
 
 static lv_obj_t * home_scr;
 static lv_obj_t * solar_scr;
@@ -89,7 +90,7 @@ static void check_update_cb(lv_event_t * e)
     LV_UNUSED(e);
     lv_label_set_text(update_status_lbl, LV_SYMBOL_REFRESH " Checking in background...");
     lv_obj_set_style_text_color(update_status_lbl, C_BLUE, 0);
-    system("systemctl start invo-updater &");
+    hal_fota_trigger();
 }
 
 static void alerts_update_cb(lv_timer_t * tmr)

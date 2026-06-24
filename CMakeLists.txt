@@ -406,7 +406,7 @@ target_include_directories(lvgl_linux PUBLIC
 # Link LVGL with external dependencies - Modern CMake/CMP0079 allows this
 target_link_libraries(lvgl PUBLIC ${PKG_CONFIG_LIB} m pthread rt dl)
 
-add_executable(lvglsim src/main.c src/invo/invo_home.c src/invo/invo_screens.c src/invo/invo_wifi.c src/invo/invo_weather.c src/invo/invo_uart.c src/invo/invo_sleep.c src/invo/lv_font_weather_20.c src/invo/lv_font_weather_36.c src/invo/lv_font_montserrat_60.c)
+add_executable(lvglsim src/main.c src/hal/hal_pi.c src/invo/invo_home.c src/invo/invo_screens.c src/invo/invo_wifi.c src/invo/invo_weather.c src/invo/invo_uart.c src/invo/invo_sleep.c src/invo/lv_font_weather_20.c src/invo/lv_font_weather_36.c src/invo/lv_font_montserrat_60.c)
 
 # --start-group/--end-group: linker rescans until all intra-library circular refs resolve
 target_link_libraries(lvglsim -Wl,--start-group lvgl_linux lvgl -Wl,--end-group)
