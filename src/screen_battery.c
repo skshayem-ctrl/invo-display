@@ -1,9 +1,14 @@
 #include "ui_common.h"
 #include <stdio.h>
+#ifdef ESP_PLATFORM
+#include "modbus_inverter.h"
+#endif
 
 static void output_on_cb(lv_event_t *e)
 {
-#ifndef ESP_PLATFORM
+#ifdef ESP_PLATFORM
+    modbus_inverter_request_output(1);
+#else
     FILE *f = fopen("/home/intelli/invo_cmd", "w");
     if (f) { fprintf(f, "output_on\n"); fclose(f); }
 #endif
@@ -11,7 +16,9 @@ static void output_on_cb(lv_event_t *e)
 
 static void output_off_cb(lv_event_t *e)
 {
-#ifndef ESP_PLATFORM
+#ifdef ESP_PLATFORM
+    modbus_inverter_request_output(0);
+#else
     FILE *f = fopen("/home/intelli/invo_cmd", "w");
     if (f) { fprintf(f, "output_off\n"); fclose(f); }
 #endif

@@ -5,6 +5,7 @@ idf_component_register(
         "weather_service.c"
         "lvgl_port.c"
         "uart_input.c"
+        "modbus_inverter.c"
         "fota.c"
         "../../src/hal/hal_esp32.c"
         "../../src/ui_common.c"
