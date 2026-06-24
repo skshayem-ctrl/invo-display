@@ -4,4 +4,4 @@ dependencies:
   lvgl/lvgl: "9.4.0"
   espressif/esp_hosted: "2.12.9"
   espressif/esp_wifi_remote: "1.6.1"
-  espressif/usb_host_cdc_acm: "2.4.0"
+  espressif/usb_host_cdc_acm: ">=2.0.0"
