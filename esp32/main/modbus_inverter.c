@@ -74,10 +74,11 @@ static inline int16_t s16(uint16_t v) { return (int16_t)v; }
 /* ── USB callbacks ───────────────────────────────────────────────────── */
 
 /* Every byte arriving from the dongle goes into the queue */
-static void usb_rx_cb(const uint8_t *data, size_t len, void *arg)
+static bool usb_rx_cb(const uint8_t *data, size_t len, void *arg)
 {
     for (size_t i = 0; i < len; i++)
         xQueueSend(s_rx_queue, &data[i], 0);
+    return true;
 }
 
 /* Device-level events (disconnect, error) */
@@ -94,10 +95,10 @@ static void usb_event_cb(const cdc_acm_host_dev_event_data_t *event, void *user_
 static void new_dev_cb(usb_device_handle_t usb_dev)
 {
     /* Read VID/PID so we can identify the dongle */
-    usb_device_info_t info;
-    usb_host_device_info(usb_dev, &info);
-    uint16_t vid = info.desc->idVendor;
-    uint16_t pid = info.desc->idProduct;
+    const usb_device_desc_t *dev_desc;
+    usb_host_get_device_descriptor(usb_dev, &dev_desc);
+    uint16_t vid = dev_desc->idVendor;
+    uint16_t pid = dev_desc->idProduct;
     ESP_LOGI(TAG, "USB device connected: VID=0x%04X PID=0x%04X", vid, pid);
 
     if (vid == CH340_VID && pid == CH340_PID) {

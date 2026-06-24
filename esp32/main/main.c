@@ -15,10 +15,10 @@ void app_main(void)
     /* Mark this OTA slot valid so the bootloader won't roll back */
     esp_ota_mark_app_valid_cancel_rollback();
 
-    wifi_manager_init();
-
     hal_display_init();   /* LDO + DSI + panel + LEDC backlight + LVGL init */
     hal_touch_init();     /* I2C + GT911 + LVGL indev */
+
+    wifi_manager_init();  /* after display so the screen isn't blank during 15s WiFi wait */
 
     /* Build main screen and start UI timers */
     app.clk_h = 10;
