@@ -93,6 +93,7 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}":/workspace \
             -w /workspace/esp32 \
+            -e IDF_TARGET=esp32p4 \
             espressif/idf:release-v5.3 \
             idf.py build
 
