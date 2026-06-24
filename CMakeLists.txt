@@ -83,7 +83,7 @@ if (CONFIG_LV_USE_EVDEV)
 
     list(APPEND PKG_CONFIG_LIB ${EVDEV_LIBRARIES})
     list(APPEND PKG_CONFIG_INC ${EVDEV_INCLUDE_DIRS})
-    list(APPEND LV_LINUX_BACKEND_SRC src/lib/indev_backends/evdev.c)
+    list(APPEND LV_LINUX_BACKEND_SRC pi5/lib/indev_backends/evdev.c)
 
 endif()
 
@@ -95,7 +95,7 @@ if (CONFIG_LV_USE_LINUX_DRM)
 
     list(APPEND PKG_CONFIG_LIB ${LIBDRM_LIBRARIES})
     list(APPEND PKG_CONFIG_INC ${LIBDRM_INCLUDE_DIRS})
-    list(APPEND LV_LINUX_BACKEND_SRC src/lib/display_backends/drm.c)
+    list(APPEND LV_LINUX_BACKEND_SRC pi5/lib/display_backends/drm.c)
 
 endif()
 
@@ -143,7 +143,7 @@ if (CONFIG_LV_USE_SDL OR CONFIG_LV_USE_DRAW_SDL)
     list(APPEND PKG_CONFIG_LIB ${SDL2_LIBRARIES} ${SDL2_IMAGE_LIBRARIES})
     list(APPEND PKG_CONFIG_INC ${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIRS})
 
-    list(APPEND LV_LINUX_BACKEND_SRC src/lib/display_backends/sdl.c)
+    list(APPEND LV_LINUX_BACKEND_SRC pi5/lib/display_backends/sdl.c)
 endif()
 
 
@@ -224,7 +224,7 @@ if (CONFIG_LV_USE_WAYLAND)
     endif()
     
     list(APPEND PKG_CONFIG_INC ${PROTOCOLS_DIR})
-    list(APPEND LV_LINUX_BACKEND_SRC src/lib/display_backends/wayland.c ${WAYLAND_PROTOCOLS_SRC})
+    list(APPEND LV_LINUX_BACKEND_SRC pi5/lib/display_backends/wayland.c ${WAYLAND_PROTOCOLS_SRC})
 
 endif()
 
@@ -237,7 +237,7 @@ if (CONFIG_LV_USE_X11)
 
     list(APPEND PKG_CONFIG_INC ${X11_INCLUDE_DIRS})
     list(APPEND PKG_CONFIG_LIB ${X11_LIBRARIES})
-    list(APPEND LV_LINUX_BACKEND_SRC src/lib/display_backends/x11.c)
+    list(APPEND LV_LINUX_BACKEND_SRC pi5/lib/display_backends/x11.c)
 
 endif()
 
@@ -245,7 +245,7 @@ if (CONFIG_LV_USE_LINUX_FBDEV)
 
     # FBDEV has no dependencies
     message("Including FBDEV support")
-    list(APPEND LV_LINUX_BACKEND_SRC src/lib/display_backends/fbdev.c)
+    list(APPEND LV_LINUX_BACKEND_SRC pi5/lib/display_backends/fbdev.c)
 
 endif()
 
@@ -258,7 +258,7 @@ if (CONFIG_LV_USE_GLFW)
 
     list(APPEND PKG_CONFIG_LIB ${GLFW3_LIBRARIES})
     list(APPEND PKG_CONFIG_LIB ${GLEW_LIBRARIES})
-    list(APPEND LV_LINUX_BACKEND_SRC src/lib/display_backends/glfw3.c)
+    list(APPEND LV_LINUX_BACKEND_SRC pi5/lib/display_backends/glfw3.c)
 
 endif()
 
@@ -387,8 +387,8 @@ if(USE_EXTERNAL_DEMOS)
 endif()
 
 
-file(GLOB LV_LINUX_SRC src/lib/*.c)
-set(LV_LINUX_INC src/lib)
+file(GLOB LV_LINUX_SRC pi5/lib/*.c)
+set(LV_LINUX_INC pi5/lib)
 
 target_include_directories(lvgl PUBLIC ${PKG_CONFIG_INC})
 
@@ -401,12 +401,33 @@ target_include_directories(lvgl_linux PUBLIC ${PKG_CONFIG_INC})
 set_target_properties(lvgl_linux PROPERTIES COMPILE_DEFINITIONS "${LVGL_COMPILER_DEFINES}")
 target_include_directories(lvgl_linux PUBLIC
     ${LV_LINUX_INC} ${CMAKE_CURRENT_SOURCE_DIR}
-    ${PROJECT_SOURCE_DIR}/src/lib ${LVGL_CONF_INC_DIR})
+    ${PROJECT_SOURCE_DIR}/pi5/lib ${LVGL_CONF_INC_DIR})
 
 # Link LVGL with external dependencies - Modern CMake/CMP0079 allows this
 target_link_libraries(lvgl PUBLIC ${PKG_CONFIG_LIB} m pthread rt dl)
 
-add_executable(lvglsim src/main.c src/hal/hal_pi.c src/invo/invo_home.c src/invo/invo_screens.c src/invo/invo_wifi.c src/invo/invo_weather.c src/invo/invo_uart.c src/invo/invo_sleep.c src/invo/lv_font_weather_20.c src/invo/lv_font_weather_36.c src/invo/lv_font_montserrat_60.c)
+add_executable(lvglsim
+    pi5/main.c
+    src/hal/hal_pi.c
+    pi5/invo/invo_uart.c
+    src/ui_common.c
+    src/screen_main.c
+    src/screen_battery.c
+    src/screen_solar.c
+    src/screen_weather.c
+    src/screen_sleep.c
+    src/screen_wifi.c
+    src/screen_settings.c
+    src/screen_history.c
+    src/screen_alerts.c
+    src/screen_load.c
+    src/weather_icon.c
+    src/lvgl_port_pi.c
+    src/wifi_manager_pi.c
+    src/uart_input_pi.c
+    src/weather_service_pi.c
+)
+target_include_directories(lvglsim PRIVATE src ${CMAKE_CURRENT_SOURCE_DIR})
 
 # --start-group/--end-group: linker rescans until all intra-library circular refs resolve
 target_link_libraries(lvglsim -Wl,--start-group lvgl_linux lvgl -Wl,--end-group)
@@ -419,7 +440,7 @@ endif()
 
 
 # Install the lvgl_linux library and its headers
-install(DIRECTORY src/lib/
+install(DIRECTORY pi5/lib/
     DESTINATION include/lvgl
     FILES_MATCHING
     PATTERN "backends*" EXCLUDE

@@ -1,6 +1,6 @@
 #include "hal.h"
-#include "src/lib/driver_backends.h"
-#include "src/invo/invo_uart.h"
+#include "pi5/lib/driver_backends.h"
+#include "pi5/invo/invo_uart.h"
 
 #include <stdio.h>
 #include <stdlib.h>
