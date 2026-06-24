@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "ui_common.h"
 #include "lvgl_port.h"
 #include "fota.h"
