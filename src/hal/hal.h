@@ -1,7 +1,11 @@
 #ifndef INVO_HAL_H
 #define INVO_HAL_H
 
-#include "lvgl/lvgl.h"
+#ifdef ESP_PLATFORM
+#  include "lvgl.h"        /* ESP-IDF managed component */
+#else
+#  include "lvgl/lvgl.h"   /* Pi submodule */
+#endif
 
 /* ── Shared inverter data structure ─────────────────────────────────────────
  * Both platforms populate this struct. Screens read only from this struct —
