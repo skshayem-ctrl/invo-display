@@ -1,8 +1,7 @@
 #include "ui_common.h"
 #include "lvgl_port.h"
 #include "fota.h"
-#include "driver/ledc.h"
-#include "hw_config.h"
+#include "hal/hal.h"
 
 /* ── Brightness ─────────────────────────────────────────────────── */
 static lv_obj_t *s_brightness_pct_lbl;
@@ -17,12 +16,7 @@ static void brightness_slider_cb(lv_event_t *e)
 {
     lv_obj_t *sl  = lv_event_get_target(e);
     int        pct = lv_slider_get_value(sl);
-    /* ledc_set_duty only writes the duty register — it preserves the
-     * output_invert flag set during initial ledc_channel_config().
-     * duty=1023 (pct=100) → full brightness; lower pct → dimmer. */
-    uint32_t duty = (uint32_t)(pct * 1023 / 100);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    hal_brightness_set(pct);
     char buf[8];
     snprintf(buf, sizeof(buf), "%d%%", pct);
     lv_label_set_text(s_brightness_pct_lbl, buf);
