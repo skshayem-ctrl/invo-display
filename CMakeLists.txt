@@ -426,6 +426,7 @@ add_executable(lvglsim
     src/wifi_manager_pi.c
     src/uart_input_pi.c
     src/weather_service_pi.c
+    src/fota_pi.c
 )
 target_include_directories(lvglsim PRIVATE src ${CMAKE_CURRENT_SOURCE_DIR})
 
