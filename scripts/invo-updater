@@ -135,7 +135,10 @@ def main():
     remote_ver = release["tag_name"].lstrip("v")
     log.info(f"Latest release:  {remote_ver}")
 
-    if remote_ver <= local_ver:
+    def parse_ver(v):
+        return tuple(int(x) for x in v.split('.'))
+
+    if parse_ver(remote_ver) <= parse_ver(local_ver):
         log.info("Already up to date.")
         return
 
