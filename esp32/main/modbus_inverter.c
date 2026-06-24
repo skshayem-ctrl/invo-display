@@ -1,55 +1,62 @@
 /*
- * modbus_inverter.c — Megmeet inverter RS485 Modbus RTU reader for ESP32
+ * modbus_inverter.c — Megmeet inverter Modbus RTU via USB-RS485 dongle
  *
- * Wiring (MAX3485 8-pin DIP):
- *   Pin 1 RO  ── ESP32 GPIO 15  (UART1 RX)
- *   Pin 2 RE ─┐
- *   Pin 3 DE ─┘── ESP32 GPIO 16  (direction control, HIGH=TX LOW=RX)
- *   Pin 4 DI  ── ESP32 GPIO 17  (UART1 TX)
- *   Pin 5 GND ── GND
- *   Pin 6 A   ── Inverter A+
- *   Pin 7 B   ── Inverter B-
- *   Pin 8 VCC ── 3.3V
+ * Connection:
+ *   USB-RS485 dongle USB end → ESP32 USB-C port  (host mode)
+ *   Dongle screw terminal A  → Inverter A+
+ *   Dongle screw terminal B  → Inverter B-
+ *
+ * Works with: CP2102, FTDI FT232, PL2303 (standard CDC-ACM)
+ * CH340 note: CH340 is vendor-specific — if your dongle uses CH340,
+ *             monitor will print "CH340 not supported via CDC-ACM"
+ *             and you will need to swap to a CP2102/FTDI dongle.
  */
 #include "modbus_inverter.h"
 #include "ui_common.h"
 #include "lvgl_port.h"
-#include "driver/uart.h"
-#include "driver/gpio.h"
+#include "usb/usb_host.h"
+#include "usb/cdc_acm_host.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include <math.h>
 #include <string.h>
 
-#define MB_UART     UART_NUM_1
-#define MB_TX_PIN   17          /* → MAX3485 DI */
-#define MB_RX_PIN   15          /* ← MAX3485 RO */
-#define MB_DE_PIN   16          /* → MAX3485 DE+RE tied (HIGH=TX, LOW=RX) */
-#define MB_BAUD     9600
+/* ── Config ─────────────────────────────────────────────────────────── */
 
-#define MB_SLAVE    1
+#define MB_BAUD       9600
+#define MB_SLAVE      1
 
-/* Megmeet register map — matches invo_bridge.py exactly */
 #define REG_B1_START  4017
-#define REG_B1_COUNT  17        /* 4017-4033 */
+#define REG_B1_COUNT  17      /* 4017-4033 */
 #define REG_B2_START  4036
-#define REG_B2_COUNT  8         /* 4036-4043 */
+#define REG_B2_COUNT  8       /* 4036-4043 */
 #define REG_OUT_CTRL  4049
 
-/* 48V battery system — adjust to match your bank */
 #define BATT_RATED_V  48.0f
 #define BATT_AH       100.0f
 #define BATT_EMA      0.15f
 
-static const char *TAG = "modbus";
-static volatile bool s_valid       = false;
-static volatile int  s_pending_cmd = -1;   /* -1=none  0=OFF  1=ON */
+/* CH340 VID/PID — cannot open via CDC-ACM, used to print a warning */
+#define CH340_VID     0x1A86
+#define CH340_PID     0x7523
 
-bool modbus_inverter_valid(void)          { return s_valid; }
+/* ── State ───────────────────────────────────────────────────────────── */
+
+static const char *TAG = "modbus";
+
+static volatile bool         s_valid       = false;
+static volatile int          s_pending_cmd = -1;
+static cdc_acm_dev_hdl_t     s_cdc_hdl     = NULL;
+static QueueHandle_t         s_rx_queue;
+static SemaphoreHandle_t     s_device_sem;   /* given when dongle opens */
+
+bool modbus_inverter_valid(void)            { return s_valid; }
 void modbus_inverter_request_output(int on) { s_pending_cmd = on; }
 
-/* ── CRC16 (Modbus polynomial) ─────────────────────────────────────── */
+/* ── CRC16 ───────────────────────────────────────────────────────────── */
 
 static uint16_t crc16(const uint8_t *data, int len)
 {
@@ -64,84 +71,154 @@ static uint16_t crc16(const uint8_t *data, int len)
 
 static inline int16_t s16(uint16_t v) { return (int16_t)v; }
 
-/* ── FC 0x03 — read holding registers ──────────────────────────────── */
+/* ── USB callbacks ───────────────────────────────────────────────────── */
+
+/* Every byte arriving from the dongle goes into the queue */
+static void usb_rx_cb(const uint8_t *data, size_t len, void *arg)
+{
+    for (size_t i = 0; i < len; i++)
+        xQueueSend(s_rx_queue, &data[i], 0);
+}
+
+/* Device-level events (disconnect, error) */
+static void usb_event_cb(const cdc_acm_host_dev_event_data_t *event, void *user_ctx)
+{
+    if (event->type == CDC_ACM_HOST_DEVICE_DISCONNECTED) {
+        ESP_LOGW(TAG, "Dongle disconnected — waiting for reconnect");
+        s_valid   = false;
+        s_cdc_hdl = NULL;
+    }
+}
+
+/* Called by cdc_acm_host driver when any USB device connects */
+static void new_dev_cb(usb_device_handle_t usb_dev)
+{
+    /* Read VID/PID so we can identify the dongle */
+    usb_device_info_t info;
+    usb_host_device_info(usb_dev, &info);
+    uint16_t vid = info.desc->idVendor;
+    uint16_t pid = info.desc->idProduct;
+    ESP_LOGI(TAG, "USB device connected: VID=0x%04X PID=0x%04X", vid, pid);
+
+    if (vid == CH340_VID && pid == CH340_PID) {
+        ESP_LOGE(TAG, "CH340 dongle detected — NOT supported via CDC-ACM.");
+        ESP_LOGE(TAG, "Please use a CP2102 or FTDI-based RS485 dongle instead.");
+        return;
+    }
+
+    cdc_acm_host_device_config_t dev_cfg = {
+        .data_cb         = usb_rx_cb,
+        .event_cb        = usb_event_cb,
+        .user_arg        = NULL,
+        .out_buffer_size = 64,
+        .in_buffer_size  = 256,
+    };
+
+    esp_err_t err = cdc_acm_host_open(vid, pid, 0, &dev_cfg, &s_cdc_hdl);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Cannot open dongle: %s", esp_err_to_name(err));
+        return;
+    }
+
+    /* Set 9600 8N1 */
+    cdc_acm_line_coding_t lc = {
+        .dwDTERate  = MB_BAUD,
+        .bCharFormat = 0,   /* 1 stop bit */
+        .bParityType = 0,   /* no parity */
+        .bDataBits   = 8,
+    };
+    cdc_acm_host_line_coding_set(s_cdc_hdl, &lc);
+
+    ESP_LOGI(TAG, "RS485 dongle ready @ %d baud 8N1", MB_BAUD);
+    xSemaphoreGive(s_device_sem);
+}
+
+/* ── USB host event task ─────────────────────────────────────────────── */
+
+static void usb_host_task(void *arg)
+{
+    while (1) {
+        uint32_t flags;
+        usb_host_lib_handle_events(portMAX_DELAY, &flags);
+        if (flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS)
+            usb_host_device_free_all();
+    }
+}
+
+/* ── Modbus transport ────────────────────────────────────────────────── */
 
 static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
 {
+    if (!s_cdc_hdl) return -10;
+
     uint8_t req[8];
-    req[0] = MB_SLAVE;
-    req[1] = 0x03;
-    req[2] = start >> 8;
-    req[3] = start & 0xFF;
-    req[4] = 0;
-    req[5] = count;
+    req[0] = MB_SLAVE; req[1] = 0x03;
+    req[2] = start >> 8; req[3] = start & 0xFF;
+    req[4] = 0; req[5] = count;
     uint16_t crc = crc16(req, 6);
-    req[6] = crc & 0xFF;        /* CRC low byte first — Modbus spec */
-    req[7] = crc >> 8;
+    req[6] = crc & 0xFF; req[7] = crc >> 8;
 
-    uart_flush_input(MB_UART);
-
-    gpio_set_level(MB_DE_PIN, 1);
-    uart_write_bytes(MB_UART, req, 8);
-    uart_wait_tx_done(MB_UART, pdMS_TO_TICKS(50));
-    gpio_set_level(MB_DE_PIN, 0);
+    xQueueReset(s_rx_queue);
+    cdc_acm_host_data_tx_blocking(s_cdc_hdl, req, 8, 100);
 
     int expected = 5 + count * 2;
     uint8_t resp[64];
-    int n = uart_read_bytes(MB_UART, resp, expected, pdMS_TO_TICKS(300));
-
-    if (n < expected) {
-        ESP_LOGW(TAG, "Short resp %d/%d (reg %u)", n, expected, start);
-        return -1;
+    for (int i = 0; i < expected; i++) {
+        if (xQueueReceive(s_rx_queue, &resp[i], pdMS_TO_TICKS(300)) != pdTRUE) {
+            ESP_LOGW(TAG, "RX timeout at byte %d/%d (reg %u)", i, expected, start);
+            return -1;
+        }
     }
-    if (resp[1] & 0x80) { ESP_LOGW(TAG, "Modbus exc 0x%02X", resp[2]); return -2; }
-    if (resp[2] != count * 2) { ESP_LOGW(TAG, "Byte count mismatch");   return -3; }
 
-    uint16_t resp_crc = (uint16_t)resp[n-2] | ((uint16_t)resp[n-1] << 8);
-    if (resp_crc != crc16(resp, n - 2)) { ESP_LOGW(TAG, "CRC fail"); return -4; }
+    if (resp[1] & 0x80) { ESP_LOGW(TAG, "Modbus exc 0x%02X", resp[2]); return -2; }
+    if (resp[2] != count * 2) return -3;
+    uint16_t resp_crc = (uint16_t)resp[expected-2] | ((uint16_t)resp[expected-1] << 8);
+    if (resp_crc != crc16(resp, expected - 2)) { ESP_LOGW(TAG, "CRC fail"); return -4; }
 
     for (int i = 0; i < count; i++)
         out[i] = ((uint16_t)resp[3 + i*2] << 8) | resp[4 + i*2];
     return count;
 }
 
-/* ── FC 0x06 — write single register ───────────────────────────────── */
-
 static void mb_write_reg(uint16_t addr, uint16_t value)
 {
+    if (!s_cdc_hdl) return;
     uint8_t req[8];
-    req[0] = MB_SLAVE;
-    req[1] = 0x06;
-    req[2] = addr >> 8;
-    req[3] = addr & 0xFF;
-    req[4] = value >> 8;
-    req[5] = value & 0xFF;
+    req[0] = MB_SLAVE; req[1] = 0x06;
+    req[2] = addr >> 8; req[3] = addr & 0xFF;
+    req[4] = value >> 8; req[5] = value & 0xFF;
     uint16_t crc = crc16(req, 6);
-    req[6] = crc & 0xFF;
-    req[7] = crc >> 8;
-
-    uart_flush_input(MB_UART);
-    gpio_set_level(MB_DE_PIN, 1);
-    uart_write_bytes(MB_UART, req, 8);
-    uart_wait_tx_done(MB_UART, pdMS_TO_TICKS(100));
-    gpio_set_level(MB_DE_PIN, 0);
+    req[6] = crc & 0xFF; req[7] = crc >> 8;
+    xQueueReset(s_rx_queue);
+    cdc_acm_host_data_tx_blocking(s_cdc_hdl, req, 8, 200);
 }
 
-/* ── Main poll task (runs every 3 s) ───────────────────────────────── */
+/* ── Main poll task ──────────────────────────────────────────────────── */
 
 static void modbus_task(void *arg)
 {
-    float smooth_pct  = -1.0f;  /* -1 = uninitialised */
+    /* Block until USB dongle connects and opens */
+    ESP_LOGI(TAG, "Waiting for RS485 dongle...");
+    xSemaphoreTake(s_device_sem, portMAX_DELAY);
+    ESP_LOGI(TAG, "Starting Modbus RTU polls");
+
+    float smooth_pct  = -1.0f;
     int   valid_streak = 0;
 
     while (1) {
-        /* ── Check for pending output command ─────────────────── */
+        /* Reconnect after disconnect */
+        if (!s_cdc_hdl) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
+        /* Pending output command (from OUT ON/OFF buttons) */
         int cmd = s_pending_cmd;
         if (cmd >= 0) {
             s_pending_cmd = -1;
             mb_write_reg(REG_OUT_CTRL, cmd ? 1 : 0);
             ESP_LOGI(TAG, "Output %s", cmd ? "ON" : "OFF");
-            vTaskDelay(pdMS_TO_TICKS(4000));  /* inverter settling time */
+            vTaskDelay(pdMS_TO_TICKS(4000));
         }
 
         /* ── Read two register blocks ─────────────────────────── */
@@ -151,27 +228,27 @@ static void modbus_task(void *arg)
         int rc2 = mb_read_regs(REG_B2_START, REG_B2_COUNT, r2);
 
         if (rc1 < 0 || rc2 < 0) {
-            ESP_LOGW(TAG, "Poll failed (rc1=%d rc2=%d) — retry in 3 s", rc1, rc2);
+            ESP_LOGW(TAG, "Poll failed (rc1=%d rc2=%d)", rc1, rc2);
             s_valid = false;
             vTaskDelay(pdMS_TO_TICKS(3000));
             continue;
         }
 
-        /* ── Decode — identical math to invo_bridge.py ─────────── */
-        float pv_v       = r1[0]  * 0.1f;          /* 4017 PV voltage       */
-        float pv_a       = s16(r1[1])  * 0.1f;     /* 4018 PV current       */
-        int   pv_w       = s16(r1[2]);              /* 4019 PV power W       */
-        float batt_v     = r1[7]  * 0.1f;          /* 4024 battery V        */
-        float batt_a     = s16(r1[8])  * 0.1f;     /* 4025 battery A        */
-        int   batt_w     = s16(r1[9]);              /* 4026 battery power W  */
-        float raw_grid_v = r1[11] * 0.1f;          /* 4028 grid voltage     */
-        float grid_hz    = r1[15] * 0.01f;         /* 4032 grid Hz          */
-        float inv_out_v  = r2[0]  * 0.1f;          /* 4036 inv output V     */
-        float out_a      = s16(r2[1])  * 0.1f;     /* 4037 output A         */
-        int   out_w      = s16(r2[2]);              /* 4038 output W         */
-        float out_hz     = r2[3]  * 0.01f;         /* 4039 output Hz        */
-        uint16_t op_st   = r2[4];                   /* 4040 operating status */
-        float inv_t      = s16(r2[7])  * 0.1f;     /* 4043 inverter temp °C */
+        /* ── Decode (same math as invo_bridge.py) ─────────────── */
+        float pv_v       = r1[0]  * 0.1f;
+        float pv_a       = s16(r1[1])  * 0.1f;
+        int   pv_w       = s16(r1[2]);
+        float batt_v     = r1[7]  * 0.1f;
+        float batt_a     = s16(r1[8])  * 0.1f;
+        int   batt_w     = s16(r1[9]);
+        float raw_grid_v = r1[11] * 0.1f;
+        float grid_hz    = r1[15] * 0.01f;
+        float inv_out_v  = r2[0]  * 0.1f;
+        float out_a      = s16(r2[1])  * 0.1f;
+        int   out_w      = s16(r2[2]);
+        float out_hz     = r2[3]  * 0.01f;
+        uint16_t op_st   = r2[4];
+        float inv_t      = s16(r2[7])  * 0.1f;
 
         int is_bypassing = (op_st >> 10) & 1;
         int inv_on       = (op_st >>  8) & 1;
@@ -179,37 +256,27 @@ static void modbus_task(void *arg)
         int fault        = (op_st >> 11) & 1;
         float out_v = is_bypassing ? raw_grid_v : inv_out_v;
 
-        /* Sanity: discard frames with impossible AC frequency */
         if ((grid_hz > 0.0f && grid_hz < 44.0f) || grid_hz > 56.0f) {
             ESP_LOGW(TAG, "Bad grid_hz %.2f — discard", grid_hz);
-            vTaskDelay(pdMS_TO_TICKS(3000));
-            continue;
+            vTaskDelay(pdMS_TO_TICKS(3000)); continue;
         }
         if ((out_hz > 0.0f && out_hz < 44.0f) || out_hz > 56.0f) {
             ESP_LOGW(TAG, "Bad out_hz %.2f — discard", out_hz);
-            vTaskDelay(pdMS_TO_TICKS(3000));
-            continue;
+            vTaskDelay(pdMS_TO_TICKS(3000)); continue;
         }
 
-        /* Battery validity: needs plausible voltage AND non-zero current */
-        float batt_lo = BATT_RATED_V * 0.60f;
-        float batt_hi = BATT_RATED_V * 1.20f;
-        int batt_ok = (batt_v >= batt_lo && batt_v <= batt_hi &&
+        /* Battery validity */
+        int batt_ok = (batt_v >= BATT_RATED_V * 0.60f &&
+                       batt_v <= BATT_RATED_V * 1.20f &&
                        fabsf(batt_a) >= 0.5f);
 
-        if (batt_ok) {
-            valid_streak++;
-        } else {
-            valid_streak = 0;
-            smooth_pct = 0.0f;
-        }
+        if (batt_ok) { valid_streak++; }
+        else         { valid_streak = 0; smooth_pct = 0.0f; }
 
-        /* EMA SOC — only commit after 3 consecutive valid readings */
         if (batt_ok && valid_streak >= 3) {
             float raw_pct = (batt_v - 44.0f) / (57.6f - 44.0f) * 100.0f;
-            if (raw_pct < 0.0f)   raw_pct = 0.0f;
+            if (raw_pct < 0.0f) raw_pct = 0.0f;
             if (raw_pct > 100.0f) raw_pct = 100.0f;
-
             if (smooth_pct < 0.0f || smooth_pct == 0.0f)
                 smooth_pct = raw_pct;
             else if (fabsf(raw_pct - smooth_pct) < 25.0f)
@@ -218,7 +285,6 @@ static void modbus_task(void *arg)
         if (smooth_pct < 0.0f) smooth_pct = 0.0f;
         int pct = (int)smooth_pct;
 
-        /* Backup time */
         int backup_min = 0;
         if (out_w > 10 && pct > 0) {
             float remaining_wh = (pct / 100.0f) * BATT_AH * BATT_RATED_V;
@@ -226,10 +292,9 @@ static void modbus_task(void *arg)
             if (backup_min > 9999) backup_min = 9999;
         }
 
-        /* Grid voltage — only trust when >80V (rules out floating ADC) */
         float grid_v = raw_grid_v >= 80.0f ? raw_grid_v : 0.0f;
 
-        /* ── Write to gd (LVGL mutex held) ─────────────────────── */
+        /* ── Write to gd ────────────────────────────────────────── */
         lvgl_acquire();
         gd.solar_kw  = pv_w > 0  ? (float)pv_w / 1000.0f : 0.0f;
         gd.pv_v      = pv_v  > 0.0f ? pv_v  : 0.0f;
@@ -251,49 +316,45 @@ static void modbus_task(void *arg)
         gd.ac_chg    = ac_chg;
         gd.bypassing = is_bypassing;
         gd.fault     = fault;
-        gd.voltage   = (int)(batt_ok ? batt_v : 0.0f);  /* legacy compat */
-        gd.current   = batt_a;                           /* legacy compat */
+        gd.voltage   = (int)(batt_ok ? batt_v : 0.0f);
+        gd.current   = batt_a;
         s_valid = true;
         lvgl_release();
 
         ESP_LOGI(TAG,
             "pv=%.1fV/%.1fA/%dW batt=%.1fV/%.1fA/%d%% "
-            "out=%.1fV/%.2fHz/%dW grid=%.1fV/%.2fHz temp=%.1fC op=0x%04X",
+            "out=%.1fV/%.2fHz/%dW grid=%.1fV/%.2fHz temp=%.1fC",
             pv_v, pv_a, pv_w, batt_v, batt_a, pct,
-            out_v, out_hz, out_w, grid_v, grid_hz, inv_t, op_st);
+            out_v, out_hz, out_w, grid_v, grid_hz, inv_t);
 
         vTaskDelay(pdMS_TO_TICKS(3000));
     }
 }
 
-/* ── Init ───────────────────────────────────────────────────────────── */
+/* ── Init ────────────────────────────────────────────────────────────── */
 
 void modbus_inverter_start(void)
 {
-    /* DE/RE direction pin — default LOW (receive mode) */
-    gpio_config_t io_conf = {
-        .pin_bit_mask = 1ULL << MB_DE_PIN,
-        .mode         = GPIO_MODE_OUTPUT,
-        .pull_up_en   = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type    = GPIO_INTR_DISABLE,
-    };
-    ESP_ERROR_CHECK(gpio_config(&io_conf));
-    gpio_set_level(MB_DE_PIN, 0);
+    s_rx_queue   = xQueueCreate(256, sizeof(uint8_t));
+    s_device_sem = xSemaphoreCreateBinary();
 
-    uart_config_t cfg = {
-        .baud_rate = MB_BAUD,
-        .data_bits = UART_DATA_8_BITS,
-        .parity    = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+    /* USB host stack */
+    usb_host_config_t host_cfg = {
+        .skip_phy_setup = false,
+        .intr_flags     = ESP_INTR_FLAG_LEVEL1,
     };
-    ESP_ERROR_CHECK(uart_param_config(MB_UART, &cfg));
-    ESP_ERROR_CHECK(uart_set_pin(MB_UART, MB_TX_PIN, MB_RX_PIN,
-                                  UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-    ESP_ERROR_CHECK(uart_driver_install(MB_UART, 512, 0, 0, NULL, 0));
+    ESP_ERROR_CHECK(usb_host_install(&host_cfg));
+    xTaskCreate(usb_host_task, "usb_host", 4096, NULL, 5, NULL);
+
+    /* CDC-ACM class driver */
+    cdc_acm_host_driver_config_t cdc_cfg = {
+        .driver_task_stack_size = 4096,
+        .driver_task_priority   = 5,
+        .xCoreID                = 0,
+        .new_dev_cb             = new_dev_cb,
+    };
+    ESP_ERROR_CHECK(cdc_acm_host_install(&cdc_cfg));
 
     xTaskCreate(modbus_task, "modbus_inv", 4096, NULL, 4, NULL);
-    ESP_LOGI(TAG, "Modbus RTU ready — UART1 TX=%d RX=%d DE=%d @ %d baud",
-             MB_TX_PIN, MB_RX_PIN, MB_DE_PIN, MB_BAUD);
+    ESP_LOGI(TAG, "USB Modbus RTU ready — plug in RS485 dongle");
 }
