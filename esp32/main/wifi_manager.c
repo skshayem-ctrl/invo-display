@@ -13,7 +13,7 @@
 
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
-#define WIFI_MAX_RETRY     INT32_MAX   /* keep retrying forever */
+#define WIFI_MAX_RETRY     5
 #define NVS_NS             "wifi_creds"
 
 static const char *TAG = "wifi";
@@ -137,8 +137,7 @@ void wifi_manager_init(void)
     wifi_init_config_t icfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_err_t wifi_ret = esp_wifi_init(&icfg);
     if (wifi_ret != ESP_OK) {
-        /* C6 SDIO slave not ready yet (common after TTS restart).
-         * Give it 3 more seconds then try a clean reboot. */
+        /* C6 SDIO slave not ready yet — give it 1s then reboot. */
         ESP_LOGW(TAG, "esp_wifi_init failed (%s) — restarting",
                  esp_err_to_name(wifi_ret));
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -201,20 +200,8 @@ void wifi_manager_scan_start(void)
 {
     s_scan_done = false;
     s_ap_count  = 0;
-
-    /* If currently connecting/retrying, pause that so scan can run.
-     * esp_wifi_scan_start() silently fails when a connect is active. */
-    if (!s_connected)
-        esp_wifi_disconnect();
-
     wifi_scan_config_t cfg = { .show_hidden = false };
-    esp_err_t err = esp_wifi_scan_start(&cfg, false);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "scan_start failed (%s) — retrying after 1s",
-                 esp_err_to_name(err));
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        esp_wifi_scan_start(&cfg, false);
-    }
+    esp_wifi_scan_start(&cfg, false);
 }
 
 bool wifi_manager_scan_done(void) { return s_scan_done; }

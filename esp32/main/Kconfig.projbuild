@@ -2,25 +2,14 @@ menu "INVO Wi-Fi"
 
     config ESP_WIFI_SSID
         string "Wi-Fi SSID"
-        default "MySSID"
+        default ""
         help
             SSID of the access point to connect to.
 
     config ESP_WIFI_PASSWORD
         string "Wi-Fi Password"
-        default "MyPassword"
-        help
-            Wi-Fi password.
-
-endmenu
-
-menu "Groq AI"
-
-    config GROQ_API_KEY
-        string "Groq API Key"
         default ""
         help
-            API key for Groq Whisper STT, Llama LLM, and Orpheus TTS.
-            Get a key at https://console.groq.com/keys
+            Wi-Fi password.
 
 endmenu

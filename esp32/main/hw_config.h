@@ -23,13 +23,3 @@
 #define TOUCH_INT_GPIO (-1)
 #define STARTUP_PHASES 8
 
-/* ── Audio / Voice Assistant ──────────────────────────────────────── */
-#define I2S_MCLK_GPIO        13
-#define I2S_BCLK_GPIO        12
-#define I2S_WS_GPIO          10
-#define I2S_DOUT_GPIO        9
-#define I2S_DIN_GPIO         11
-#define PA_ENABLE_GPIO       53
-#define ES7210_I2C_ADDR      0x80
-#define SAMPLE_RATE          44100
-#define VOICE_RECORD_SECONDS 2
