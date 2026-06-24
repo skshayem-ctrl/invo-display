@@ -66,7 +66,7 @@ lv_obj_t *screen_main_create(void)
                LV_ALIGN_BOTTOM_MID, 0, -42);
 
         app.w_solar_val = lv_label_create(c);
-        lv_lbl_setf(app.w_solar_val, "%.1f kw", gd.solar_kw);
+        lv_label_set_text(app.w_solar_val, "--");
         lv_obj_set_style_text_color(app.w_solar_val, C_BLUE, 0);
         lv_obj_set_style_text_font(app.w_solar_val, &lv_font_montserrat_20, 0);
         lv_obj_align(app.w_solar_val, LV_ALIGN_BOTTOM_MID, 0, -14);
@@ -95,7 +95,7 @@ lv_obj_t *screen_main_create(void)
         lv_arc_set_rotation(app.w_batt_arc, 135);
         lv_arc_set_bg_angles(app.w_batt_arc, 0, 270);
         lv_arc_set_range(app.w_batt_arc, 0, 100);
-        lv_arc_set_value(app.w_batt_arc, gd.batt_pct);
+        lv_arc_set_value(app.w_batt_arc, 0);
         lv_obj_set_style_arc_color(app.w_batt_arc, C_GREEN, LV_PART_INDICATOR);
         lv_obj_set_style_arc_width(app.w_batt_arc, 13, LV_PART_INDICATOR);
         lv_obj_set_style_arc_color(app.w_batt_arc, lv_color_hex(0x1A2A1A), LV_PART_MAIN);
@@ -108,7 +108,7 @@ lv_obj_t *screen_main_create(void)
                C_GREEN, LV_ALIGN_CENTER, 0, -52);
 
         app.w_batt_pct = lv_label_create(ba);
-        lv_label_set_text_fmt(app.w_batt_pct, "%d%%", gd.batt_pct);
+        lv_label_set_text(app.w_batt_pct, "--");
         lv_obj_set_style_text_color(app.w_batt_pct, C_WHITE, 0);
         lv_obj_set_style_text_font(app.w_batt_pct, &lv_font_montserrat_36, 0);
         lv_obj_align(app.w_batt_pct, LV_ALIGN_CENTER, 0, -12);
@@ -117,8 +117,7 @@ lv_obj_t *screen_main_create(void)
                LV_ALIGN_CENTER, 0, 30);
 
         app.w_batt_backup = lv_label_create(ba);
-        lv_label_set_text_fmt(app.w_batt_backup, "%dh %dm",
-                              gd.backup_h, gd.backup_m);
+        lv_label_set_text(app.w_batt_backup, "--");
         lv_obj_set_style_text_color(app.w_batt_backup, C_GREEN, 0);
         lv_obj_set_style_text_font(app.w_batt_backup, &lv_font_montserrat_16, 0);
         lv_obj_align(app.w_batt_backup, LV_ALIGN_CENTER, 0, 52);
@@ -152,7 +151,7 @@ lv_obj_t *screen_main_create(void)
                LV_ALIGN_BOTTOM_MID, 0, -42);
 
         app.w_load_val = lv_label_create(c);
-        lv_lbl_setf(app.w_load_val, "%.1f kw", gd.load_kw);
+        lv_label_set_text(app.w_load_val, "--");
         lv_obj_set_style_text_color(app.w_load_val, C_BLUE, 0);
         lv_obj_set_style_text_font(app.w_load_val, &lv_font_montserrat_20, 0);
         lv_obj_align(app.w_load_val, LV_ALIGN_BOTTOM_MID, 0, -14);

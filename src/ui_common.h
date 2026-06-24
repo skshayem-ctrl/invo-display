@@ -2,30 +2,45 @@
 #include "lvgl.h"
 
 /* colour palette */
-#define C_BG    lv_color_hex(0x080C18)
-#define C_CARD  lv_color_hex(0x0E1422)
-#define C_LINE  lv_color_hex(0x1E2A3A)
-#define C_BLUE  lv_color_hex(0x1E90FF)
-#define C_GREEN lv_color_hex(0x39D353)
-#define C_AMBER lv_color_hex(0xFFA726)
-#define C_RED   lv_color_hex(0xFF3B3B)
-#define C_WHITE lv_color_hex(0xFFFFFF)
-#define C_GRAY  lv_color_hex(0x8892A0)
-#define C_DGRAY lv_color_hex(0x2A3348)
+#define C_BG     lv_color_hex(0x080C18)
+#define C_CARD   lv_color_hex(0x0E1422)
+#define C_LINE   lv_color_hex(0x1E2A3A)
+#define C_BLUE   lv_color_hex(0x1E90FF)
+#define C_GREEN  lv_color_hex(0x39D353)
+#define C_AMBER  lv_color_hex(0xFFA726)
+#define C_ORANGE lv_color_hex(0xFFA726)
+#define C_PURPLE lv_color_hex(0xBB86FC)
+#define C_RED    lv_color_hex(0xFF3B3B)
+#define C_WHITE  lv_color_hex(0xFFFFFF)
+#define C_GRAY   lv_color_hex(0x8892A0)
+#define C_DGRAY  lv_color_hex(0x2A3348)
 
-/* simulated telemetry — swap fields with real sensor reads */
+/* live inverter data */
 typedef struct {
+    /* battery */
     float solar_kw, load_kw;
     int   batt_pct, backup_h, backup_m;
     float chg_kw, batt_cap, batt_usable;
     int   batt_health, batt_cycles;
     float batt_life, batt_temp;
     int   chg_h, chg_m;
+    /* solar panel */
+    float pv_v, pv_a;
+    /* AC grid input */
+    float grid_v, grid_hz;
+    /* battery V/A */
+    float batt_v, batt_a;
+    /* inverter output */
+    float out_v, out_hz, out_a;
+    /* status flags */
+    int   inv_on, bypassing, fault, ac_chg;
+    /* weather */
     int   wx_c, wx_feels_c, humidity, aqi;
     float wx_wind_kmh;
     int   wx_code;
     int   wx_pm25, wx_pm10;
     int   fc_code[7], fc_hi[7], fc_lo[7];
+    /* legacy (kept for compat) */
     int   voltage;
     float current, today_solar_kwh, today_load_kwh, month_kwh;
 } gd_t;
@@ -44,12 +59,16 @@ typedef struct {
     lv_obj_t *w_warn_ring, *w_warn_dlg;
     /* battery detail */
     lv_obj_t *w_bd_pct, *w_bd_chg, *w_bd_bkp, *w_bd_full, *w_bd_tmp;
+    lv_obj_t *w_bd_batt_v, *w_bd_batt_a;
+    lv_obj_t *w_bd_inv_on, *w_bd_ac_chg, *w_bd_bypass, *w_bd_fault;
     /* solar detail */
     lv_obj_t *w_sd_kw, *w_sd_kwh, *w_sd_volt, *w_sd_cur;
+    lv_obj_t *w_sd_grid_hz, *w_sd_grid_v;
     lv_obj_t *w_sd_chart;
     lv_chart_series_t *w_sd_ser;
     /* home load detail */
     lv_obj_t *w_ld_kw, *w_ld_kwh;
+    lv_obj_t *w_ld_out_v, *w_ld_out_hz, *w_ld_out_w, *w_ld_out_a;
     lv_obj_t *w_ld_chart;
     lv_chart_series_t *w_ld_ser;
     /* weather detail */
@@ -80,6 +99,10 @@ void      lv_lbl_setf(lv_obj_t *l, const char *fmt, double v);
 lv_obj_t *mk_cont(lv_obj_t *par, int w, int h);
 lv_obj_t *add_logo(lv_obj_t *par, int yoff);
 lv_obj_t *add_detail_header(lv_obj_t *par, const char *title);
+/* Pi-style stat card: label/value/sub all centre-relative, returns value label */
+lv_obj_t *make_stat_card(lv_obj_t *scr, int w, int h, int ox, int oy,
+                          const char *label, const char *value, const char *sub,
+                          lv_color_t val_col, lv_color_t sub_col);
 
 /* navigation callbacks */
 void go_load_cb(lv_event_t *e);
