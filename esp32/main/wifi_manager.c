@@ -201,8 +201,20 @@ void wifi_manager_scan_start(void)
 {
     s_scan_done = false;
     s_ap_count  = 0;
+
+    /* If currently connecting/retrying, pause that so scan can run.
+     * esp_wifi_scan_start() silently fails when a connect is active. */
+    if (!s_connected)
+        esp_wifi_disconnect();
+
     wifi_scan_config_t cfg = { .show_hidden = false };
-    esp_wifi_scan_start(&cfg, false);
+    esp_err_t err = esp_wifi_scan_start(&cfg, false);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "scan_start failed (%s) — retrying after 1s",
+                 esp_err_to_name(err));
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        esp_wifi_scan_start(&cfg, false);
+    }
 }
 
 bool wifi_manager_scan_done(void) { return s_scan_done; }
