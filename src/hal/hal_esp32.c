@@ -209,18 +209,25 @@ int hal_brightness_get(void)
 
 void hal_data_get(invo_data_t *out)
 {
-    out->batt_pct       = (float)gd.batt_pct;
-    out->batt_v         = (float)gd.voltage;
-    out->batt_a         = gd.current;
-    out->batt_chg_kw    = gd.chg_kw;
-    out->batt_temp      = gd.batt_temp;
+    out->batt_pct        = (float)gd.batt_pct;
+    out->batt_v          = gd.batt_v;
+    out->batt_a          = gd.batt_a;
+    out->batt_chg_kw     = gd.chg_kw;
+    out->batt_temp       = gd.batt_temp;
     out->batt_backup_min = gd.backup_h * 60 + gd.backup_m;
-    out->solar_kw       = gd.solar_kw;
-    out->load_kw        = gd.load_kw;
-    out->fault          = 0;
-    out->bypassing      = 0;
-    out->inv_on         = 1;
-    out->ac_chg         = 0;
+    out->solar_kw        = gd.solar_kw;
+    out->solar_v         = gd.pv_v;
+    out->solar_a         = gd.pv_a;
+    out->grid_v          = gd.grid_v;
+    out->grid_hz         = gd.grid_hz;
+    out->load_kw         = gd.load_kw;
+    out->out_v           = gd.out_v;
+    out->out_hz          = gd.out_hz;
+    out->out_a           = gd.out_a;
+    out->fault           = gd.fault;
+    out->bypassing       = gd.bypassing;
+    out->inv_on          = gd.inv_on;
+    out->ac_chg          = gd.ac_chg;
 }
 
 /* ── FOTA ─────────────────────────────────────────────────────────────────── */
