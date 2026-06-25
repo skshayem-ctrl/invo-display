@@ -114,14 +114,15 @@ jobs:
           REPO="${{ github.repository }}"
           BIN_URL="https://github.com/${REPO}/releases/download/${TAG}/invo-esp32-${TAG}.bin"
 
-          printf '{\n  "version": "%s",\n  "url": "%s"\n}\n' \
-            "$VER" "$BIN_URL" > esp32/version.json
-
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git reset --hard HEAD
           git fetch origin master
           git rebase origin/master
+
+          printf '{\n  "version": "%s",\n  "url": "%s"\n}\n' \
+            "$VER" "$BIN_URL" > esp32/version.json
+
           git add esp32/version.json
           git commit -m "chore: ESP32 version.json → ${TAG} [skip ci]"
           git push origin HEAD:refs/heads/master
