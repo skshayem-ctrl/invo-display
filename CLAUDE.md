@@ -8,7 +8,7 @@ Replaces React/Chromium stack for production-grade embedded product.
 - Raspberry Pi 5, Raspberry Pi OS Trixie
 - Display: /dev/fb0 (drm-rp1-dsidrmf), 800x800
 - Touch: /dev/input/event5 (Goodix Capacitive TouchScreen)
-- SSH: intelli@192.168.77.200
+- SSH: intelli@192.168.77.120  (password: 1)
 
 ## Build & Run
 ```bash
