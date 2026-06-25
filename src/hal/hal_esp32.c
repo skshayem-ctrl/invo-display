@@ -157,16 +157,16 @@ void hal_touch_init(void)
     i2c_master_bus_handle_t i2c_bus;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &i2c_bus));
 
-    /* Manual GT911 reset — 200 ms settle */
+    /* GT911 reset — 200 ms low then 300 ms settle (longer after hot reboot) */
     gpio_config_t rst_gpio_cfg = {
         .pin_bit_mask = BIT64(TOUCH_RST_GPIO),
         .mode         = GPIO_MODE_OUTPUT,
     };
     ESP_ERROR_CHECK(gpio_config(&rst_gpio_cfg));
     gpio_set_level(TOUCH_RST_GPIO, 0);
-    vTaskDelay(pdMS_TO_TICKS(100));
-    gpio_set_level(TOUCH_RST_GPIO, 1);
     vTaskDelay(pdMS_TO_TICKS(200));
+    gpio_set_level(TOUCH_RST_GPIO, 1);
+    vTaskDelay(pdMS_TO_TICKS(300));
 
     esp_lcd_panel_io_handle_t tp_io;
     esp_lcd_panel_io_i2c_config_t tp_io_cfg = ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG();
@@ -179,7 +179,12 @@ void hal_touch_init(void)
         .int_gpio_num = TOUCH_INT_GPIO,
         .levels.reset = 0,
     };
-    ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_gt911(tp_io, &tp_cfg, &s_touch));
+    esp_err_t touch_err = esp_lcd_touch_new_i2c_gt911(tp_io, &tp_cfg, &s_touch);
+    if (touch_err != ESP_OK) {
+        ESP_LOGW("hal", "GT911 init failed (%s) — touch disabled", esp_err_to_name(touch_err));
+        s_touch = NULL;
+        return;
+    }
 
     lv_indev_t *indev = lv_indev_create();
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
