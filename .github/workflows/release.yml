@@ -119,6 +119,7 @@ jobs:
 
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git reset --hard HEAD
           git fetch origin master
           git rebase origin/master
           git add esp32/version.json
