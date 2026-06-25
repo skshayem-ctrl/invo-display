@@ -4,7 +4,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_http_client.h"
-#include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "cJSON.h"
 
@@ -15,7 +14,7 @@
 #include "weather_icon.h"
 
 #define WEATHER_URL \
-    "https://api.open-meteo.com/v1/forecast" \
+    "http://api.open-meteo.com/v1/forecast" \
     "?latitude=12.97&longitude=77.59" \
     "&current=temperature_2m,apparent_temperature," \
     "relative_humidity_2m,weather_code,wind_speed_10m" \
@@ -23,7 +22,7 @@
     "&timezone=Asia%2FKolkata"
 
 #define AQI_URL \
-    "https://air-quality-api.open-meteo.com/v1/air-quality" \
+    "http://air-quality-api.open-meteo.com/v1/air-quality" \
     "?latitude=12.97&longitude=77.59" \
     "&current=us_aqi,pm2_5,pm10"
 
@@ -94,8 +93,7 @@ static bool http_get(const char *url, char *buf, int buf_size)
 {
     esp_http_client_config_t cfg = {
         .url               = url,
-        .timeout_ms        = 20000,   /* 20s: covers TLS handshake over SDIO */
-        .crt_bundle_attach = esp_crt_bundle_attach,
+        .timeout_ms        = 10000,
     };
     for (int attempt = 0; attempt < 3; attempt++) {
         if (attempt > 0) {
