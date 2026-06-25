@@ -128,7 +128,11 @@ static void fota_task(void *arg)
             char rmsg[24];
             snprintf(rmsg, sizeof(rmsg), "Retry %d/5...", attempt);
             notify(FOTA_DOWNLOADING, 0, rmsg);
-            vTaskDelay(pdMS_TO_TICKS(15000));
+            /* Wait up to 45s for WiFi to recover after SDIO blips */
+            for (int w = 0; !wifi_manager_connected() && w < 45; w++)
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            /* Extra 20s for DNS to stabilise after WiFi reconnects */
+            vTaskDelay(pdMS_TO_TICKS(20000));
         }
 
         if (!wifi_manager_connected()) {
