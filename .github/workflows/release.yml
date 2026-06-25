@@ -116,9 +116,8 @@ jobs:
 
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git reset --hard HEAD
           git fetch origin master
-          git rebase origin/master
+          git checkout origin/master
 
           printf '{\n  "version": "%s",\n  "url": "%s"\n}\n' \
             "$VER" "$BIN_URL" > esp32/version.json
