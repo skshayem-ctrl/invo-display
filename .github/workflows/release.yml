@@ -119,6 +119,8 @@ jobs:
 
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin master
+          git rebase origin/master
           git add esp32/version.json
           git commit -m "chore: ESP32 version.json → ${TAG} [skip ci]"
           git push origin HEAD:refs/heads/master
