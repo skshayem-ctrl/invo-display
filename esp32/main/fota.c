@@ -6,7 +6,6 @@
 #include "esp_https_ota.h"
 #include "esp_ota_ops.h"
 #include "esp_http_client.h"
-#include "esp_crt_bundle.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "cJSON.h"
@@ -48,9 +47,8 @@ static void fota_task(void *arg)
     notify(FOTA_CHECKING, 0, "Checking for updates...");
 
     esp_http_client_config_t ver_cfg = {
-        .url               = FOTA_VERSION_URL,
-        .timeout_ms        = 15000,
-        .crt_bundle_attach = esp_crt_bundle_attach,
+        .url        = FOTA_VERSION_URL,
+        .timeout_ms = 15000,
     };
     esp_http_client_handle_t client = esp_http_client_init(&ver_cfg);
 
@@ -111,10 +109,9 @@ static void fota_task(void *arg)
     vTaskDelay(pdMS_TO_TICKS(8000));
 
     esp_http_client_config_t dl_cfg = {
-        .url                 = fw_url,
-        .timeout_ms          = 120000, /* 2 min — enough for full 1.6MB download */
-        .crt_bundle_attach   = esp_crt_bundle_attach,
-        .buffer_size         = 16384,
+        .url         = fw_url,
+        .timeout_ms  = 120000,
+        .buffer_size = 16384,
         .buffer_size_tx      = 4096,
         .keep_alive_enable   = true,
         .keep_alive_idle     = 5,
