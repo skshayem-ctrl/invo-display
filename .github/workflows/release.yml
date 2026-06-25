@@ -124,7 +124,11 @@ jobs:
             "$VER" "$BIN_URL" > esp32/version.json
 
           git add esp32/version.json
-          git commit -m "chore: ESP32 version.json → ${TAG} [skip ci]"
-          git push origin HEAD:refs/heads/master
+          if git diff --cached --quiet; then
+            echo "version.json already up to date, nothing to commit"
+          else
+            git commit -m "chore: ESP32 version.json → ${TAG} [skip ci]"
+            git push origin HEAD:refs/heads/master
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
