@@ -201,7 +201,7 @@ void fota_start(fota_cb_t cb)
         s_state == FOTA_VERIFYING) return;
     s_cb    = cb;
     s_state = FOTA_IDLE;
-    xTaskCreate(fota_task, "fota", 16384, NULL, 5, NULL);
+    xTaskCreate(fota_task, "fota", 16384, NULL, 2, NULL);
 }
 
 fota_state_t fota_get_state(void)       { return s_state; }
