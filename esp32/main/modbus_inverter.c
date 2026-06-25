@@ -1,34 +1,35 @@
 /*
- * modbus_inverter.c — Megmeet inverter Modbus RTU via USB-RS485 dongle
+ * modbus_inverter.c — Megmeet inverter Modbus RTU via hardware UART + RS485 module
  *
- * Connection:
- *   USB-RS485 dongle USB end → ESP32 USB-C port  (host mode)
- *   Dongle screw terminal A  → Inverter A+
- *   Dongle screw terminal B  → Inverter B-
+ * Wiring (TTL side of module → ESP32 header):
+ *   Module VCC  → 3.3V
+ *   Module GND  → GND
+ *   Module RXD  → GPIO 4  (MB_UART_TX)
+ *   Module TXD  → GPIO 5  (MB_UART_RX)
+ *   Module EN   → GPIO 22 (MB_UART_DE)  HIGH=transmit, LOW=receive
  *
- * Works with: CP2102, FTDI FT232, PL2303 (standard CDC-ACM)
- * CH340 note: CH340 is vendor-specific — if your dongle uses CH340,
- *             monitor will print "CH340 not supported via CDC-ACM"
- *             and you will need to swap to a CP2102/FTDI dongle.
+ * RS485 side of module → Inverter:
+ *   Module A → Inverter RX_485A
+ *   Module B → Inverter TX_485B
+ *   Module GND → Inverter TTL_DGND
+ *   Inverter TTL_12V — do NOT connect
+ *   Inverter PCS_EN  — leave unconnected
  */
 #include "modbus_inverter.h"
+#include "hw_config.h"
 #include "ui_common.h"
 #include "lvgl_port.h"
-#include "usb/usb_host.h"
-#include "usb/cdc_acm_host.h"
+#include "driver/uart.h"
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/queue.h"
-#include "freertos/semphr.h"
 #include <math.h>
 #include <string.h>
 
-/* ── Config ─────────────────────────────────────────────────────────── */
+#define TAG           "modbus"
 
-#define MB_BAUD       9600
 #define MB_SLAVE      1
-
 #define REG_B1_START  4017
 #define REG_B1_COUNT  17      /* 4017-4033 */
 #define REG_B2_START  4036
@@ -39,19 +40,8 @@
 #define BATT_AH       100.0f
 #define BATT_EMA      0.15f
 
-/* CH340 VID/PID — cannot open via CDC-ACM, used to print a warning */
-#define CH340_VID     0x1A86
-#define CH340_PID     0x7523
-
-/* ── State ───────────────────────────────────────────────────────────── */
-
-static const char *TAG = "modbus";
-
-static volatile bool         s_valid       = false;
-static volatile int          s_pending_cmd = -1;
-static cdc_acm_dev_hdl_t     s_cdc_hdl     = NULL;
-static QueueHandle_t         s_rx_queue;
-static SemaphoreHandle_t     s_device_sem;   /* given when dongle opens */
+static volatile bool s_valid      = false;
+static volatile int  s_pending_cmd = -1;
 
 bool modbus_inverter_valid(void)            { return s_valid; }
 void modbus_inverter_request_output(int on) { s_pending_cmd = on; }
@@ -71,104 +61,42 @@ static uint16_t crc16(const uint8_t *data, int len)
 
 static inline int16_t s16(uint16_t v) { return (int16_t)v; }
 
-/* ── USB callbacks ───────────────────────────────────────────────────── */
+/* ── RS485 half-duplex helpers ───────────────────────────────────────── */
 
-/* Every byte arriving from the dongle goes into the queue */
-static bool usb_rx_cb(const uint8_t *data, size_t len, void *arg)
+static void rs485_tx_mode(void)
 {
-    for (size_t i = 0; i < len; i++)
-        xQueueSend(s_rx_queue, &data[i], 0);
-    return true;
+    gpio_set_level(MB_UART_DE, 1);
 }
 
-/* Device-level events (disconnect, error) */
-static void usb_event_cb(const cdc_acm_host_dev_event_data_t *event, void *user_ctx)
+static void rs485_rx_mode(void)
 {
-    if (event->type == CDC_ACM_HOST_DEVICE_DISCONNECTED) {
-        ESP_LOGW(TAG, "Dongle disconnected — waiting for reconnect");
-        s_valid   = false;
-        s_cdc_hdl = NULL;
-    }
-}
-
-/* Called by cdc_acm_host driver when any USB device connects */
-static void new_dev_cb(usb_device_handle_t usb_dev)
-{
-    /* Read VID/PID so we can identify the dongle */
-    const usb_device_desc_t *dev_desc;
-    usb_host_get_device_descriptor(usb_dev, &dev_desc);
-    uint16_t vid = dev_desc->idVendor;
-    uint16_t pid = dev_desc->idProduct;
-    ESP_LOGI(TAG, "USB device connected: VID=0x%04X PID=0x%04X", vid, pid);
-
-    if (vid == CH340_VID && pid == CH340_PID) {
-        ESP_LOGE(TAG, "CH340 dongle detected — NOT supported via CDC-ACM.");
-        ESP_LOGE(TAG, "Please use a CP2102 or FTDI-based RS485 dongle instead.");
-        return;
-    }
-
-    cdc_acm_host_device_config_t dev_cfg = {
-        .data_cb         = usb_rx_cb,
-        .event_cb        = usb_event_cb,
-        .user_arg        = NULL,
-        .out_buffer_size = 64,
-        .in_buffer_size  = 256,
-    };
-
-    esp_err_t err = cdc_acm_host_open(vid, pid, 0, &dev_cfg, &s_cdc_hdl);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Cannot open dongle: %s", esp_err_to_name(err));
-        return;
-    }
-
-    /* Set 9600 8N1 */
-    cdc_acm_line_coding_t lc = {
-        .dwDTERate  = MB_BAUD,
-        .bCharFormat = 0,   /* 1 stop bit */
-        .bParityType = 0,   /* no parity */
-        .bDataBits   = 8,
-    };
-    cdc_acm_host_line_coding_set(s_cdc_hdl, &lc);
-
-    ESP_LOGI(TAG, "RS485 dongle ready @ %d baud 8N1", MB_BAUD);
-    xSemaphoreGive(s_device_sem);
-}
-
-/* ── USB host event task ─────────────────────────────────────────────── */
-
-static void usb_host_task(void *arg)
-{
-    while (1) {
-        uint32_t flags;
-        usb_host_lib_handle_events(portMAX_DELAY, &flags);
-        if (flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS)
-            usb_host_device_free_all();
-    }
+    /* Wait for TX FIFO to drain before releasing the bus */
+    uart_wait_tx_done(MB_UART_NUM, pdMS_TO_TICKS(50));
+    gpio_set_level(MB_UART_DE, 0);
 }
 
 /* ── Modbus transport ────────────────────────────────────────────────── */
 
 static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
 {
-    if (!s_cdc_hdl) return -10;
-
     uint8_t req[8];
     req[0] = MB_SLAVE; req[1] = 0x03;
     req[2] = start >> 8; req[3] = start & 0xFF;
-    req[4] = 0; req[5] = count;
-    uint16_t crc = crc16(req, 6);
-    req[6] = crc & 0xFF; req[7] = crc >> 8;
+    req[4] = 0;          req[5] = count;
+    uint16_t c = crc16(req, 6);
+    req[6] = c & 0xFF;   req[7] = c >> 8;
 
-    xQueueReset(s_rx_queue);
-    cdc_acm_host_data_tx_blocking(s_cdc_hdl, req, 8, 100);
+    uart_flush_input(MB_UART_NUM);
+    rs485_tx_mode();
+    uart_write_bytes(MB_UART_NUM, req, 8);
+    rs485_rx_mode();
 
     int expected = 5 + count * 2;
     uint8_t resp[64];
-    for (int i = 0; i < expected; i++) {
-        if (xQueueReceive(s_rx_queue, &resp[i], pdMS_TO_TICKS(300)) != pdTRUE) {
-            ESP_LOGW(TAG, "RX timeout at byte %d/%d (reg %u)", i, expected, start);
-            return -1;
-        }
+    int got = uart_read_bytes(MB_UART_NUM, resp, expected, pdMS_TO_TICKS(300));
+    if (got < expected) {
+        ESP_LOGW(TAG, "RX timeout: got %d/%d (reg %u)", got, expected, start);
+        return -1;
     }
 
     if (resp[1] & 0x80) { ESP_LOGW(TAG, "Modbus exc 0x%02X", resp[2]); return -2; }
@@ -183,37 +111,34 @@ static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
 
 static void mb_write_reg(uint16_t addr, uint16_t value)
 {
-    if (!s_cdc_hdl) return;
     uint8_t req[8];
     req[0] = MB_SLAVE; req[1] = 0x06;
     req[2] = addr >> 8; req[3] = addr & 0xFF;
     req[4] = value >> 8; req[5] = value & 0xFF;
-    uint16_t crc = crc16(req, 6);
-    req[6] = crc & 0xFF; req[7] = crc >> 8;
-    xQueueReset(s_rx_queue);
-    cdc_acm_host_data_tx_blocking(s_cdc_hdl, req, 8, 200);
+    uint16_t c = crc16(req, 6);
+    req[6] = c & 0xFF; req[7] = c >> 8;
+
+    uart_flush_input(MB_UART_NUM);
+    rs485_tx_mode();
+    uart_write_bytes(MB_UART_NUM, req, 8);
+    rs485_rx_mode();
+    /* Read and discard the echo/response */
+    uint8_t resp[8];
+    uart_read_bytes(MB_UART_NUM, resp, 8, pdMS_TO_TICKS(200));
 }
 
 /* ── Main poll task ──────────────────────────────────────────────────── */
 
 static void modbus_task(void *arg)
 {
-    /* Block until USB dongle connects and opens */
-    ESP_LOGI(TAG, "Waiting for RS485 dongle...");
-    xSemaphoreTake(s_device_sem, portMAX_DELAY);
-    ESP_LOGI(TAG, "Starting Modbus RTU polls");
-
-    float smooth_pct  = -1.0f;
+    float smooth_pct   = -1.0f;
     int   valid_streak = 0;
 
-    while (1) {
-        /* Reconnect after disconnect */
-        if (!s_cdc_hdl) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
+    ESP_LOGI(TAG, "Modbus RTU polling started (UART%d TX=%d RX=%d DE=%d)",
+             MB_UART_NUM, MB_UART_TX, MB_UART_RX, MB_UART_DE);
 
-        /* Pending output command (from OUT ON/OFF buttons) */
+    while (1) {
+        /* Pending output command */
         int cmd = s_pending_cmd;
         if (cmd >= 0) {
             s_pending_cmd = -1;
@@ -235,7 +160,7 @@ static void modbus_task(void *arg)
             continue;
         }
 
-        /* ── Decode (same math as invo_bridge.py) ─────────────── */
+        /* ── Decode ───────────────────────────────────────────── */
         float pv_v       = r1[0]  * 0.1f;
         float pv_a       = s16(r1[1])  * 0.1f;
         int   pv_w       = s16(r1[2]);
@@ -255,7 +180,7 @@ static void modbus_task(void *arg)
         int inv_on       = (op_st >>  8) & 1;
         int ac_chg       = (op_st >>  9) & 1;
         int fault        = (op_st >> 11) & 1;
-        float out_v = is_bypassing ? raw_grid_v : inv_out_v;
+        float out_v      = is_bypassing ? raw_grid_v : inv_out_v;
 
         if ((grid_hz > 0.0f && grid_hz < 44.0f) || grid_hz > 56.0f) {
             ESP_LOGW(TAG, "Bad grid_hz %.2f — discard", grid_hz);
@@ -266,7 +191,6 @@ static void modbus_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(3000)); continue;
         }
 
-        /* Battery validity */
         int batt_ok = (batt_v >= BATT_RATED_V * 0.60f &&
                        batt_v <= BATT_RATED_V * 1.20f &&
                        fabsf(batt_a) >= 0.5f);
@@ -336,26 +260,27 @@ static void modbus_task(void *arg)
 
 void modbus_inverter_start(void)
 {
-    s_rx_queue   = xQueueCreate(256, sizeof(uint8_t));
-    s_device_sem = xSemaphoreCreateBinary();
-
-    /* USB host stack */
-    usb_host_config_t host_cfg = {
-        .skip_phy_setup = false,
-        .intr_flags     = ESP_INTR_FLAG_LEVEL1,
+    /* DE pin — output, start in RX mode */
+    gpio_config_t de_cfg = {
+        .pin_bit_mask = BIT64(MB_UART_DE),
+        .mode         = GPIO_MODE_OUTPUT,
     };
-    ESP_ERROR_CHECK(usb_host_install(&host_cfg));
-    xTaskCreate(usb_host_task, "usb_host", 4096, NULL, 5, NULL);
+    ESP_ERROR_CHECK(gpio_config(&de_cfg));
+    gpio_set_level(MB_UART_DE, 0);
 
-    /* CDC-ACM class driver */
-    cdc_acm_host_driver_config_t cdc_cfg = {
-        .driver_task_stack_size = 4096,
-        .driver_task_priority   = 5,
-        .xCoreID                = 0,
-        .new_dev_cb             = new_dev_cb,
+    /* UART driver */
+    uart_config_t uart_cfg = {
+        .baud_rate  = MB_BAUD,
+        .data_bits  = UART_DATA_8_BITS,
+        .parity     = UART_PARITY_DISABLE,
+        .stop_bits  = UART_STOP_BITS_1,
+        .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
     };
-    ESP_ERROR_CHECK(cdc_acm_host_install(&cdc_cfg));
+    ESP_ERROR_CHECK(uart_param_config(MB_UART_NUM, &uart_cfg));
+    ESP_ERROR_CHECK(uart_set_pin(MB_UART_NUM, MB_UART_TX, MB_UART_RX,
+                                 UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+    ESP_ERROR_CHECK(uart_driver_install(MB_UART_NUM, 256, 0, 0, NULL, 0));
 
     xTaskCreate(modbus_task, "modbus_inv", 4096, NULL, 4, NULL);
-    ESP_LOGI(TAG, "USB Modbus RTU ready — plug in RS485 dongle");
+    ESP_LOGI(TAG, "Modbus RTU ready (UART%d @ %d baud)", MB_UART_NUM, MB_BAUD);
 }

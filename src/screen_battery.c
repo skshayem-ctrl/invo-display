@@ -81,10 +81,10 @@ lv_obj_t *screen_battery_create(void)
     app.w_bd_tmp    = make_stat_card(scr, 175, 80,  -8,   20, "Inv Temp",  "--", "Inverter temp", C_ORANGE, C_GRAY);
     app.w_bd_bkp    = make_stat_card(scr, 175, 80, 177,   20, "Backup",    "--", "Est. runtime",  C_BLUE,   C_GRAY);
 
-    /* ── Output ON button (CENTER,10,-90) ───────────────────────────── */
+    /* ── Output ON button — below stat grid, centered on right columns ─ */
     lv_obj_t *on_btn = lv_btn_create(scr);
     lv_obj_set_size(on_btn, 85, 55);
-    lv_obj_align(on_btn, LV_ALIGN_CENTER, 10, -90);
+    lv_obj_align(on_btn, LV_ALIGN_CENTER, 35, 125);
     lv_obj_set_style_bg_color(on_btn, lv_color_hex(0x0d2a0d), 0);
     lv_obj_set_style_radius(on_btn, 8, 0);
     lv_obj_set_style_border_color(on_btn, C_GREEN, 0);
@@ -97,10 +97,10 @@ lv_obj_t *screen_battery_create(void)
     lv_obj_set_style_text_align(on_lbl, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(on_lbl);
 
-    /* ── Output OFF button (CENTER,110,-90) ─────────────────────────── */
+    /* ── Output OFF button ───────────────────────────────────────────── */
     lv_obj_t *off_btn = lv_btn_create(scr);
     lv_obj_set_size(off_btn, 85, 55);
-    lv_obj_align(off_btn, LV_ALIGN_CENTER, 110, -90);
+    lv_obj_align(off_btn, LV_ALIGN_CENTER, 135, 125);
     lv_obj_set_style_bg_color(off_btn, lv_color_hex(0x2a0d0d), 0);
     lv_obj_set_style_radius(off_btn, 8, 0);
     lv_obj_set_style_border_color(off_btn, lv_color_hex(0xff3300), 0);

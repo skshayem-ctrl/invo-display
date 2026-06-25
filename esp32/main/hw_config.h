@@ -23,3 +23,10 @@
 #define TOUCH_INT_GPIO (-1)
 #define STARTUP_PHASES 8
 
+/* RS485 / Modbus RTU — UART1 */
+#define MB_UART_NUM    UART_NUM_1
+#define MB_UART_TX     4   /* ESP32 TX → module RXD */
+#define MB_UART_RX     5   /* module TXD → ESP32 RX */
+#define MB_UART_DE     22  /* direction control → module EN (HIGH=TX, LOW=RX) */
+#define MB_BAUD        9600
+

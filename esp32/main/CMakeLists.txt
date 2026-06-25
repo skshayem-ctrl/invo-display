@@ -40,5 +40,4 @@ idf_component_register(
         json
         app_update
         esp_https_ota
-        usb
 )
