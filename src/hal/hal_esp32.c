@@ -7,6 +7,7 @@
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include "esp_err.h"
+#include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
