@@ -1,6 +1,6 @@
 #pragma once
 
 #define FOTA_VERSION_URL \
-    "https://raw.githubusercontent.com/skshayem-ctrl/invo-display/master/esp32/version.json"
+    "http://192.168.77.200:8080/version.json"
 
 #include "../../src/fota.h"

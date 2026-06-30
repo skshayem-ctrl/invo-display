@@ -378,20 +378,14 @@ void data_tick_cb(lv_timer_t *t)
     if (app.w_wifi_wxd) lv_obj_set_style_text_color(app.w_wifi_wxd, wifi_col, 0);
 
 #ifdef ESP_PLATFORM
-    uint32_t r = esp_random();
-    /* Simulate on ESP32 when no real data yet */
-    if (!uart_solar_valid()) {
-        gd.solar_kw += (r & 1) ? 0.15f : -0.15f;
-        if (gd.solar_kw < 0.4f) gd.solar_kw = 0.4f;
-        if (gd.solar_kw > 3.8f) gd.solar_kw = 3.8f;
+    if (!uart_batt_valid()) {
+        gd.solar_kw  = 0.0f;  gd.load_kw   = 0.0f;
+        gd.batt_v    = 0.0f;  gd.batt_a    = 0.0f;
+        gd.chg_kw    = 0.0f;  gd.batt_temp = 0.0f;
+        gd.pv_v      = 0.0f;  gd.pv_a      = 0.0f;
+        gd.grid_v    = 0.0f;  gd.grid_hz   = 0.0f;  gd.grid_chg_w = 0;
+        gd.out_v     = 0.0f;  gd.out_hz    = 0.0f;  gd.out_a      = 0.0f;
     }
-    r >>= 1;
-    if (!uart_load_valid()) {
-        gd.load_kw += (r & 1) ? 0.10f : -0.10f;
-        if (gd.load_kw < 0.6f) gd.load_kw = 0.6f;
-        if (gd.load_kw > 2.8f) gd.load_kw = 2.8f;
-    }
-    r >>= 1;
     gd.today_solar_kwh += gd.solar_kw * (2.0f / 3600.0f);
     gd.today_load_kwh  += gd.load_kw  * (2.0f / 3600.0f);
     bool batt_ok = uart_batt_valid();
@@ -401,9 +395,10 @@ void data_tick_cb(lv_timer_t *t)
     bool batt_ok = (gd.batt_pct > 0);
 #endif
 
-    lv_color_t arc_col = batt_ok ? (gd.batt_pct >= 50 ? C_GREEN :
-                                     gd.batt_pct >= 20 ? C_AMBER : C_RED)
-                                  : C_GRAY;
+    bool pct_ok = batt_ok && gd.batt_pct > 0;
+    lv_color_t arc_col = pct_ok ? (gd.batt_pct >= 50 ? C_GREEN :
+                                    gd.batt_pct >= 20 ? C_AMBER : C_RED)
+                                 : C_GRAY;
 
     /* ── Main screen ─────────────────────────────────────────────── */
     if (gd.solar_kw > 0)
@@ -417,23 +412,23 @@ void data_tick_cb(lv_timer_t *t)
         lv_label_set_text(app.w_load_val, "--");
 
     if (app.w_batt_pct)
-        batt_ok ? lv_label_set_text_fmt(app.w_batt_pct, "%d%%", gd.batt_pct)
-                : lv_label_set_text(app.w_batt_pct, "--");
+        pct_ok ? lv_label_set_text_fmt(app.w_batt_pct, "%d%%", gd.batt_pct)
+               : lv_label_set_text(app.w_batt_pct, "--");
 
     if (app.w_batt_backup)
-        batt_ok ? lv_label_set_text_fmt(app.w_batt_backup, "%dh %dm",
-                                        gd.backup_h, gd.backup_m)
-                : lv_label_set_text(app.w_batt_backup, "--");
+        pct_ok ? lv_label_set_text_fmt(app.w_batt_backup, "%dh %dm",
+                                       gd.backup_h, gd.backup_m)
+               : lv_label_set_text(app.w_batt_backup, "--");
 
     if (app.w_batt_arc) {
-        lv_arc_set_value(app.w_batt_arc, batt_ok ? gd.batt_pct : 0);
+        lv_arc_set_value(app.w_batt_arc, pct_ok ? gd.batt_pct : 0);
         lv_obj_set_style_arc_color(app.w_batt_arc, arc_col, LV_PART_INDICATOR);
     }
 
     /* ── Battery detail ──────────────────────────────────────────── */
     if (app.w_bd_pct)
-        batt_ok ? lv_label_set_text_fmt(app.w_bd_pct, "%d%%", gd.batt_pct)
-                : lv_label_set_text(app.w_bd_pct, "--");
+        pct_ok ? lv_label_set_text_fmt(app.w_bd_pct, "%d%%", gd.batt_pct)
+               : lv_label_set_text(app.w_bd_pct, "--");
     if (app.w_bd_batt_v)
         gd.batt_v > 0 ? lv_lbl_setf(app.w_bd_batt_v, "%.1f V", gd.batt_v)
                        : lv_label_set_text(app.w_bd_batt_v, "--");
@@ -445,9 +440,12 @@ void data_tick_cb(lv_timer_t *t)
         gd.batt_temp > 0 ? lv_lbl_setf(app.w_bd_tmp, "%.1f\xC2\xB0""C", gd.batt_temp)
                          : lv_label_set_text(app.w_bd_tmp, "--");
     if (app.w_bd_bkp)
-        batt_ok ? lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm",
-                                        gd.backup_h, gd.backup_m)
-                : lv_label_set_text(app.w_bd_bkp, "--");
+        pct_ok ? lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm",
+                                       gd.backup_h, gd.backup_m)
+               : lv_label_set_text(app.w_bd_bkp, "--");
+    if (app.w_bd_grid_chg_w)
+        gd.grid_chg_w > 0 ? lv_label_set_text_fmt(app.w_bd_grid_chg_w, "%d W", gd.grid_chg_w)
+                           : lv_label_set_text(app.w_bd_grid_chg_w, "--");
     /* status flags */
     if (app.w_bd_inv_on) {
         lv_label_set_text(app.w_bd_inv_on, gd.inv_on ? "ON" : "OFF");

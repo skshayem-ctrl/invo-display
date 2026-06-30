@@ -23,10 +23,10 @@
 #define TOUCH_INT_GPIO (-1)
 #define STARTUP_PHASES 8
 
-/* RS485 / Modbus RTU — UART1 */
+/* RS485 / Modbus RTU — UART1 on J8 dedicated TXD/RXD pins */
 #define MB_UART_NUM    UART_NUM_1
-#define MB_UART_TX     4   /* ESP32 TX → module RXD */
-#define MB_UART_RX     5   /* module TXD → ESP32 RX */
+#define MB_UART_TX     37  /* J8 TXD pin (UART0 native, routed here via GPIO matrix) */
+#define MB_UART_RX     38  /* J8 RXD pin */
 #define MB_UART_DE     22  /* direction control → module EN (HIGH=TX, LOW=RX) */
 #define MB_BAUD        9600
 

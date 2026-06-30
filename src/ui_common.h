@@ -28,6 +28,7 @@ typedef struct {
     float pv_v, pv_a;
     /* AC grid input */
     float grid_v, grid_hz;
+    int   grid_chg_w;
     /* battery V/A */
     float batt_v, batt_a;
     /* inverter output */
@@ -61,6 +62,7 @@ typedef struct {
     lv_obj_t *w_bd_pct, *w_bd_chg, *w_bd_bkp, *w_bd_full, *w_bd_tmp;
     lv_obj_t *w_bd_batt_v, *w_bd_batt_a;
     lv_obj_t *w_bd_inv_on, *w_bd_ac_chg, *w_bd_bypass, *w_bd_fault;
+    lv_obj_t *w_bd_grid_chg_w;   /* mains charge W — live reading */
     /* solar detail */
     lv_obj_t *w_sd_kw, *w_sd_kwh, *w_sd_volt, *w_sd_cur;
     lv_obj_t *w_sd_grid_hz, *w_sd_grid_v;

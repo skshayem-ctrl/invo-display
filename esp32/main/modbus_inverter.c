@@ -1,19 +1,21 @@
 /*
  * modbus_inverter.c — Megmeet inverter Modbus RTU via hardware UART + RS485 module
  *
- * Wiring (TTL side of module → ESP32 header):
- *   Module VCC  → 3.3V
- *   Module GND  → GND
- *   Module RXD  → GPIO 4  (MB_UART_TX)
- *   Module TXD  → GPIO 5  (MB_UART_RX)
- *   Module EN   → GPIO 22 (MB_UART_DE)  HIGH=transmit, LOW=receive
+ * ESP32 → RS485 module (TTL side):
+ *   GPIO37 (MB_UART_TX) → Module RXD   (J8 TXD pin)
+ *   GPIO38 (MB_UART_RX) ← Module TXD   (J8 RXD pin)
+ *   GPIO22 (MB_UART_DE) → Module EN   HIGH=transmit, LOW=receive
+ *   5V                  → Module VCC
+ *   GND                 → Module GND
  *
- * RS485 side of module → Inverter:
- *   Module A → Inverter RX_485A
- *   Module B → Inverter TX_485B
- *   Module GND → Inverter TTL_DGND
- *   Inverter TTL_12V — do NOT connect
- *   Inverter PCS_EN  — leave unconnected
+ * RS485 module → Inverter CN10:
+ *   Module A → Pin 3 (RX_485A)
+ *   Module B → Pin 2 (TX_485B)
+ *   GND      → Pin 1 (TTL_DGND)  ← isolated RS485 ground, must be connected
+ *   3.3V     → Pin 4 (PCS_EN)    ← enables inverter RS485 output driver
+ *   Pin 5 (TTL_12V) — do NOT connect
+ *
+ * If no response: swap A↔B at the inverter end and retry.
  */
 #include "modbus_inverter.h"
 #include "hw_config.h"
@@ -24,7 +26,6 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <math.h>
 #include <string.h>
 
 #define TAG           "modbus"
@@ -35,16 +36,16 @@
 #define REG_B2_START  4036
 #define REG_B2_COUNT  8       /* 4036-4043 */
 #define REG_OUT_CTRL  4049
+#define REG_CHG_CTRL  4054
 
-#define BATT_RATED_V  48.0f
-#define BATT_AH       100.0f
-#define BATT_EMA      0.15f
 
-static volatile bool s_valid      = false;
-static volatile int  s_pending_cmd = -1;
+static volatile bool s_valid         = false;
+static volatile int  s_pending_cmd   = -1;
+static volatile int  s_pending_chg_w = -1;
 
-bool modbus_inverter_valid(void)            { return s_valid; }
-void modbus_inverter_request_output(int on) { s_pending_cmd = on; }
+bool modbus_inverter_valid(void)              { return s_valid; }
+void modbus_inverter_request_output(int on)   { s_pending_cmd = on; }
+void modbus_inverter_request_chg_w(int watts) { s_pending_chg_w = watts; }
 
 /* ── CRC16 ───────────────────────────────────────────────────────────── */
 
@@ -61,17 +62,13 @@ static uint16_t crc16(const uint8_t *data, int len)
 
 static inline int16_t s16(uint16_t v) { return (int16_t)v; }
 
-/* ── RS485 half-duplex helpers ───────────────────────────────────────── */
+/* ── RS485 direction helpers — software GPIO ─────────────────────────── */
 
-static void rs485_tx_mode(void)
-{
-    gpio_set_level(MB_UART_DE, 1);
-}
-
-static void rs485_rx_mode(void)
-{
-    /* Wait for TX FIFO to drain before releasing the bus */
-    uart_wait_tx_done(MB_UART_NUM, pdMS_TO_TICKS(50));
+static void de_tx(void) { gpio_set_level(MB_UART_DE, 1); }
+static void de_rx(void) {
+    /* Hard wait: 8 bytes @ 9600 baud = 8.33ms, so 15ms guarantees TX is done
+     * even if uart_wait_tx_done returns prematurely on ESP32-P4 */
+    vTaskDelay(pdMS_TO_TICKS(15));
     gpio_set_level(MB_UART_DE, 0);
 }
 
@@ -87,13 +84,16 @@ static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
     req[6] = c & 0xFF;   req[7] = c >> 8;
 
     uart_flush_input(MB_UART_NUM);
-    rs485_tx_mode();
+    de_tx();
+    vTaskDelay(pdMS_TO_TICKS(1));   /* module TX-enable settle */
     uart_write_bytes(MB_UART_NUM, req, 8);
-    rs485_rx_mode();
+    de_rx();
+    ESP_LOGI(TAG, "TX reg=%u cnt=%u DE→RX gpio=%d", start, count,
+             gpio_get_level(MB_UART_DE));
 
     int expected = 5 + count * 2;
     uint8_t resp[64];
-    int got = uart_read_bytes(MB_UART_NUM, resp, expected, pdMS_TO_TICKS(300));
+    int got = uart_read_bytes(MB_UART_NUM, resp, expected, pdMS_TO_TICKS(1000));
     if (got < expected) {
         ESP_LOGW(TAG, "RX timeout: got %d/%d (reg %u)", got, expected, start);
         return -1;
@@ -119,32 +119,56 @@ static void mb_write_reg(uint16_t addr, uint16_t value)
     req[6] = c & 0xFF; req[7] = c >> 8;
 
     uart_flush_input(MB_UART_NUM);
-    rs485_tx_mode();
+    de_tx();
+    vTaskDelay(pdMS_TO_TICKS(1));
     uart_write_bytes(MB_UART_NUM, req, 8);
-    rs485_rx_mode();
-    /* Read and discard the echo/response */
+    de_rx();
     uint8_t resp[8];
-    uart_read_bytes(MB_UART_NUM, resp, 8, pdMS_TO_TICKS(200));
+    int got = uart_read_bytes(MB_UART_NUM, resp, 8, pdMS_TO_TICKS(500));
+    if (got == 8)
+        ESP_LOGI(TAG, "Write ACK %04X=%u", addr, value);
+    else
+        ESP_LOGW(TAG, "Write NACK addr=%04X (got %d/8)", addr, got);
 }
 
 /* ── Main poll task ──────────────────────────────────────────────────── */
 
 static void modbus_task(void *arg)
 {
-    float smooth_pct   = -1.0f;
-    int   valid_streak = 0;
-
-    ESP_LOGI(TAG, "Modbus RTU polling started (UART%d TX=%d RX=%d DE=%d)",
+    ESP_LOGI(TAG, "Modbus RTU polling started (UART%d TX=%d RX=%d DE=%d) [v2-15ms]",
              MB_UART_NUM, MB_UART_TX, MB_UART_RX, MB_UART_DE);
 
+    /* Passive sniff: 20s listen-only to verify receiver is alive.
+     * Run Python USB dongle script during this window. */
+    ESP_LOGI(TAG, "=== PASSIVE SNIFF: run Python dongle now, watching for 20s ===");
+    gpio_set_level(MB_UART_DE, 0);
+    {
+        uint8_t sniff[128];
+        int n = uart_read_bytes(MB_UART_NUM, sniff, sizeof(sniff), pdMS_TO_TICKS(20000));
+        if (n > 0) {
+            ESP_LOGI(TAG, "SNIFF got %d bytes:", n);
+            esp_log_buffer_hex(TAG, sniff, n);
+        } else {
+            ESP_LOGW(TAG, "SNIFF: 0 bytes in 20s — receiver likely dead");
+        }
+    }
+
     while (1) {
-        /* Pending output command */
+        /* Pending output ON/OFF command */
         int cmd = s_pending_cmd;
         if (cmd >= 0) {
             s_pending_cmd = -1;
             mb_write_reg(REG_OUT_CTRL, cmd ? 1 : 0);
             ESP_LOGI(TAG, "Output %s", cmd ? "ON" : "OFF");
             vTaskDelay(pdMS_TO_TICKS(4000));
+        }
+
+        /* Pending charge power setpoint */
+        int chg = s_pending_chg_w;
+        if (chg >= 0) {
+            s_pending_chg_w = -1;
+            mb_write_reg(REG_CHG_CTRL, (uint16_t)chg);
+            ESP_LOGI(TAG, "Charge W set → %d W", chg);
         }
 
         /* ── Read two register blocks ─────────────────────────── */
@@ -168,6 +192,7 @@ static void modbus_task(void *arg)
         float batt_a     = s16(r1[8])  * 0.1f;
         int   batt_w     = s16(r1[9]);
         float raw_grid_v = r1[11] * 0.1f;
+        int   grid_chg_w = s16(r1[14]);   /* 4031 mains charge power W */
         float grid_hz    = r1[15] * 0.01f;
         float inv_out_v  = r2[0]  * 0.1f;
         float out_a      = s16(r2[1])  * 0.1f;
@@ -191,31 +216,7 @@ static void modbus_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(3000)); continue;
         }
 
-        int batt_ok = (batt_v >= BATT_RATED_V * 0.60f &&
-                       batt_v <= BATT_RATED_V * 1.20f &&
-                       fabsf(batt_a) >= 0.5f);
-
-        if (batt_ok) { valid_streak++; }
-        else         { valid_streak = 0; smooth_pct = 0.0f; }
-
-        if (batt_ok && valid_streak >= 3) {
-            float raw_pct = (batt_v - 44.0f) / (57.6f - 44.0f) * 100.0f;
-            if (raw_pct < 0.0f) raw_pct = 0.0f;
-            if (raw_pct > 100.0f) raw_pct = 100.0f;
-            if (smooth_pct < 0.0f || smooth_pct == 0.0f)
-                smooth_pct = raw_pct;
-            else if (fabsf(raw_pct - smooth_pct) < 25.0f)
-                smooth_pct = BATT_EMA * raw_pct + (1.0f - BATT_EMA) * smooth_pct;
-        }
-        if (smooth_pct < 0.0f) smooth_pct = 0.0f;
-        int pct = (int)smooth_pct;
-
-        int backup_min = 0;
-        if (out_w > 10 && pct > 0) {
-            float remaining_wh = (pct / 100.0f) * BATT_AH * BATT_RATED_V;
-            backup_min = (int)((remaining_wh / (float)out_w) * 60.0f);
-            if (backup_min > 9999) backup_min = 9999;
-        }
+        int batt_ok = (batt_v >= 28.8f && batt_v <= 57.6f);
 
         float grid_v = raw_grid_v >= 80.0f ? raw_grid_v : 0.0f;
 
@@ -225,15 +226,16 @@ static void modbus_task(void *arg)
         gd.pv_v      = pv_v  > 0.0f ? pv_v  : 0.0f;
         gd.pv_a      = pv_a  > 0.0f ? pv_a  : 0.0f;
         gd.load_kw   = out_w > 0  ? (float)out_w / 1000.0f : 0.0f;
-        gd.batt_pct  = pct;
+        gd.batt_pct  = 0;   /* populated from BMS later */
         gd.batt_v    = batt_ok ? batt_v : 0.0f;
         gd.batt_a    = batt_a;
         gd.chg_kw    = (float)batt_w / 1000.0f;
         gd.batt_temp = (-10.0f <= inv_t && inv_t <= 120.0f) ? inv_t : 0.0f;
-        gd.backup_h  = backup_min / 60;
-        gd.backup_m  = backup_min % 60;
-        gd.grid_v    = grid_v;
-        gd.grid_hz   = grid_hz;
+        gd.backup_h  = 0;
+        gd.backup_m  = 0;
+        gd.grid_v      = grid_v;
+        gd.grid_hz     = grid_hz;
+        gd.grid_chg_w  = grid_chg_w;
         gd.out_v     = out_v;
         gd.out_hz    = out_hz;
         gd.out_a     = out_a;
@@ -247,10 +249,12 @@ static void modbus_task(void *arg)
         lvgl_release();
 
         ESP_LOGI(TAG,
-            "pv=%.1fV/%.1fA/%dW batt=%.1fV/%.1fA/%d%% "
-            "out=%.1fV/%.2fHz/%dW grid=%.1fV/%.2fHz temp=%.1fC",
-            pv_v, pv_a, pv_w, batt_v, batt_a, pct,
-            out_v, out_hz, out_w, grid_v, grid_hz, inv_t);
+            "pv=%.1fV/%.1fA/%dW batt=%.1fV/%.1fA "
+            "out=%.1fV/%.2fHz/%dW grid=%.1fV/%.2fHz temp=%.1fC "
+            "inv=%d bypass=%d ac_chg=%d fault=%d op_st=0x%04X",
+            pv_v, pv_a, pv_w, batt_v, batt_a,
+            out_v, out_hz, out_w, grid_v, grid_hz, inv_t,
+            inv_on, is_bypassing, ac_chg, fault, op_st);
 
         vTaskDelay(pdMS_TO_TICKS(3000));
     }
@@ -260,15 +264,15 @@ static void modbus_task(void *arg)
 
 void modbus_inverter_start(void)
 {
-    /* DE pin — output, start in RX mode */
+    /* DE pin — output, start low (receive mode) */
     gpio_config_t de_cfg = {
         .pin_bit_mask = BIT64(MB_UART_DE),
         .mode         = GPIO_MODE_OUTPUT,
     };
     ESP_ERROR_CHECK(gpio_config(&de_cfg));
     gpio_set_level(MB_UART_DE, 0);
+    ESP_LOGI(TAG, "DE gpio=%d initial level=%d", MB_UART_DE, gpio_get_level(MB_UART_DE));
 
-    /* UART driver */
     uart_config_t uart_cfg = {
         .baud_rate  = MB_BAUD,
         .data_bits  = UART_DATA_8_BITS,
@@ -282,5 +286,6 @@ void modbus_inverter_start(void)
     ESP_ERROR_CHECK(uart_driver_install(MB_UART_NUM, 256, 0, 0, NULL, 0));
 
     xTaskCreate(modbus_task, "modbus_inv", 4096, NULL, 4, NULL);
-    ESP_LOGI(TAG, "Modbus RTU ready (UART%d @ %d baud)", MB_UART_NUM, MB_BAUD);
+    ESP_LOGI(TAG, "Modbus RTU ready (UART%d TX=%d RX=%d DE=%d @ %d baud)",
+             MB_UART_NUM, MB_UART_TX, MB_UART_RX, MB_UART_DE, MB_BAUD);
 }

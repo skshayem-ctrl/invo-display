@@ -158,32 +158,52 @@ void hal_touch_init(void)
     i2c_master_bus_handle_t i2c_bus;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &i2c_bus));
 
-    /* GT911 reset — 200 ms low then 300 ms settle (longer after hot reboot) */
     gpio_config_t rst_gpio_cfg = {
         .pin_bit_mask = BIT64(TOUCH_RST_GPIO),
         .mode         = GPIO_MODE_OUTPUT,
     };
     ESP_ERROR_CHECK(gpio_config(&rst_gpio_cfg));
-    gpio_set_level(TOUCH_RST_GPIO, 0);
-    vTaskDelay(pdMS_TO_TICKS(200));
-    gpio_set_level(TOUCH_RST_GPIO, 1);
-    vTaskDelay(pdMS_TO_TICKS(300));
 
-    esp_lcd_panel_io_handle_t tp_io;
-    esp_lcd_panel_io_i2c_config_t tp_io_cfg = ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG();
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(i2c_bus, &tp_io_cfg, &tp_io));
-
-    esp_lcd_touch_config_t tp_cfg = {
-        .x_max        = LCD_H_RES,
-        .y_max        = LCD_V_RES,
-        .rst_gpio_num = GPIO_NUM_NC,
-        .int_gpio_num = TOUCH_INT_GPIO,
-        .levels.reset = 0,
+    /* After a flash reset (no power cycle) two things can go wrong:
+     *  1. GT911 was mid I2C transaction → SDA stuck low
+     *  2. INT pin floats HIGH → GT911 latches address 0x14 instead of 0x5D
+     * Fix: RST reset + i2c_master_bus_reset() (9 SCL pulses unstick SDA),
+     * then try both addresses. */
+    const uint8_t addrs[2] = {
+        ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS,         /* 0x5D — INT low at reset */
+        ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS_BACKUP,  /* 0x14 — INT high at reset */
     };
-    esp_err_t touch_err = esp_lcd_touch_new_i2c_gt911(tp_io, &tp_cfg, &s_touch);
-    if (touch_err != ESP_OK) {
-        ESP_LOGW("hal", "GT911 init failed (%s) — touch disabled", esp_err_to_name(touch_err));
+    for (int attempt = 0; attempt < 2; attempt++) {
+        gpio_set_level(TOUCH_RST_GPIO, 0);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        gpio_set_level(TOUCH_RST_GPIO, 1);
+        i2c_master_bus_reset(i2c_bus);   /* 9 SCL pulses — clears stuck SDA */
+        vTaskDelay(pdMS_TO_TICKS(200));
+
+        esp_lcd_panel_io_handle_t tp_io;
+        esp_lcd_panel_io_i2c_config_t tp_io_cfg = ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG();
+        tp_io_cfg.dev_addr = addrs[attempt];
+        if (esp_lcd_new_panel_io_i2c(i2c_bus, &tp_io_cfg, &tp_io) != ESP_OK) continue;
+
+        esp_lcd_touch_config_t tp_cfg = {
+            .x_max        = LCD_H_RES,
+            .y_max        = LCD_V_RES,
+            .rst_gpio_num = GPIO_NUM_NC,
+            .int_gpio_num = TOUCH_INT_GPIO,
+            .levels.reset = 0,
+        };
+        esp_err_t err = esp_lcd_touch_new_i2c_gt911(tp_io, &tp_cfg, &s_touch);
+        if (err == ESP_OK) {
+            ESP_LOGI("hal", "GT911 OK at addr 0x%02X", addrs[attempt]);
+            break;
+        }
+        ESP_LOGW("hal", "GT911 addr 0x%02X failed (%s)", addrs[attempt], esp_err_to_name(err));
+        esp_lcd_panel_io_del(tp_io);
         s_touch = NULL;
+    }
+
+    if (s_touch == NULL) {
+        ESP_LOGW("hal", "GT911 init failed — touch disabled");
         return;
     }
 
