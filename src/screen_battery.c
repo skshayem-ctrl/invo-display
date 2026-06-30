@@ -4,6 +4,28 @@
 #include "modbus_inverter.h"
 #endif
 
+static int s_chg_target = 0;
+static lv_obj_t *s_chg_target_lbl = NULL;
+
+static void chg_minus_cb(lv_event_t *e)
+{
+    if (s_chg_target >= 50) s_chg_target -= 50;
+    if (s_chg_target_lbl) lv_label_set_text_fmt(s_chg_target_lbl, "%d W", s_chg_target);
+}
+
+static void chg_plus_cb(lv_event_t *e)
+{
+    if (s_chg_target <= 950) s_chg_target += 50;
+    if (s_chg_target_lbl) lv_label_set_text_fmt(s_chg_target_lbl, "%d W", s_chg_target);
+}
+
+static void chg_set_cb(lv_event_t *e)
+{
+#ifdef ESP_PLATFORM
+    modbus_inverter_request_chg_w(s_chg_target);
+#endif
+}
+
 static void output_on_cb(lv_event_t *e)
 {
 #ifdef ESP_PLATFORM
@@ -112,6 +134,73 @@ lv_obj_t *screen_battery_create(void)
     lv_obj_set_style_text_font(off_lbl, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_align(off_lbl, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(off_lbl);
+
+    /* ── Mains Charge card (below SYS STATUS, left side) ──────────────── */
+    lv_obj_t *ccard = lv_obj_create(scr);
+    lv_obj_set_size(ccard, 185, 90);
+    lv_obj_align(ccard, LV_ALIGN_CENTER, -185, 128);
+    lv_obj_set_style_bg_color(ccard, lv_color_hex(0x0a0f1a), 0);
+    lv_obj_set_style_border_color(ccard, C_AMBER, 0);
+    lv_obj_set_style_border_width(ccard, 1, 0);
+    lv_obj_set_style_radius(ccard, 12, 0);
+    lv_obj_set_style_pad_all(ccard, 8, 0);
+    lv_obj_clear_flag(ccard, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* Row 1: label + live reading */
+    lv_obj_t *ctl = lv_label_create(ccard);
+    lv_label_set_text(ctl, "MAINS CHARGE");
+    lv_obj_set_style_text_color(ctl, C_AMBER, 0);
+    lv_obj_set_style_text_font(ctl, &lv_font_montserrat_12, 0);
+    lv_obj_align(ctl, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    app.w_bd_grid_chg_w = lv_label_create(ccard);
+    lv_label_set_text(app.w_bd_grid_chg_w, "--");
+    lv_obj_set_style_text_color(app.w_bd_grid_chg_w, C_WHITE, 0);
+    lv_obj_set_style_text_font(app.w_bd_grid_chg_w, &lv_font_montserrat_14, 0);
+    lv_obj_align(app.w_bd_grid_chg_w, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+    /* Row 2: − target + SET */
+    lv_obj_t *btn_m = lv_btn_create(ccard);
+    lv_obj_set_size(btn_m, 32, 32);
+    lv_obj_align(btn_m, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_obj_set_style_bg_color(btn_m, C_DGRAY, 0);
+    lv_obj_set_style_radius(btn_m, 6, 0);
+    lv_obj_add_event_cb(btn_m, chg_minus_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *lm = lv_label_create(btn_m);
+    lv_label_set_text(lm, "-");
+    lv_obj_set_style_text_font(lm, &lv_font_montserrat_16, 0);
+    lv_obj_center(lm);
+
+    s_chg_target_lbl = lv_label_create(ccard);
+    lv_label_set_text_fmt(s_chg_target_lbl, "%d W", s_chg_target);
+    lv_obj_set_style_text_color(s_chg_target_lbl, C_AMBER, 0);
+    lv_obj_set_style_text_font(s_chg_target_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_align(s_chg_target_lbl, LV_ALIGN_BOTTOM_MID, -16, -6);
+
+    lv_obj_t *btn_p = lv_btn_create(ccard);
+    lv_obj_set_size(btn_p, 32, 32);
+    lv_obj_align(btn_p, LV_ALIGN_BOTTOM_MID, 24, 0);
+    lv_obj_set_style_bg_color(btn_p, C_DGRAY, 0);
+    lv_obj_set_style_radius(btn_p, 6, 0);
+    lv_obj_add_event_cb(btn_p, chg_plus_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *lp = lv_label_create(btn_p);
+    lv_label_set_text(lp, "+");
+    lv_obj_set_style_text_font(lp, &lv_font_montserrat_16, 0);
+    lv_obj_center(lp);
+
+    lv_obj_t *btn_set = lv_btn_create(ccard);
+    lv_obj_set_size(btn_set, 42, 32);
+    lv_obj_align(btn_set, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    lv_obj_set_style_bg_color(btn_set, lv_color_hex(0x1a1200), 0);
+    lv_obj_set_style_border_color(btn_set, C_AMBER, 0);
+    lv_obj_set_style_border_width(btn_set, 1, 0);
+    lv_obj_set_style_radius(btn_set, 6, 0);
+    lv_obj_add_event_cb(btn_set, chg_set_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *ls = lv_label_create(btn_set);
+    lv_label_set_text(ls, "SET");
+    lv_obj_set_style_text_color(ls, C_AMBER, 0);
+    lv_obj_set_style_text_font(ls, &lv_font_montserrat_12, 0);
+    lv_obj_center(ls);
 
     add_logo(scr, -22);
     return scr;
