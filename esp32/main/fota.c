@@ -36,6 +36,24 @@ static bool version_is_newer(const char *remote, const char *local)
     return rp > lp;
 }
 
+/* Collects HTTP response body for the version.json fetch */
+typedef struct {
+    char *buf;
+    int   len;
+    int   max;
+} ver_collect_t;
+
+static esp_err_t ver_http_handler(esp_http_client_event_t *evt)
+{
+    if (evt->event_id != HTTP_EVENT_ON_DATA) return ESP_OK;
+    ver_collect_t *vc = (ver_collect_t *)evt->user_data;
+    int copy = evt->data_len;
+    if (vc->len + copy >= vc->max) return ESP_OK; /* truncate silently */
+    memcpy(vc->buf + vc->len, evt->data, copy);
+    vc->len += copy;
+    return ESP_OK;
+}
+
 typedef struct {
     esp_ota_handle_t  ota_handle;
     uint8_t          *buf;
@@ -124,31 +142,35 @@ static void fota_task(void *arg)
         return;
     }
 
-    /* 3. Version check */
+    /* 3. Version check — use perform() so redirects are followed and
+     *    the full request/response cycle is retried cleanly after an SDIO blip */
     notify(FOTA_CHECKING, 0, "Checking for updates...");
 
+    char ver_buf[VER_BUF_SIZE] = {0};
+    ver_collect_t vc = { .buf = ver_buf, .len = 0, .max = VER_BUF_SIZE - 1 };
+
     esp_http_client_config_t ver_cfg = {
-        .url               = FOTA_VERSION_URL,
-        .timeout_ms        = 15000,
-        .crt_bundle_attach = esp_crt_bundle_attach,
+        .url                   = FOTA_VERSION_URL,
+        .timeout_ms            = 15000,
+        .crt_bundle_attach     = esp_crt_bundle_attach,
+        .max_redirection_count = 5,
+        .event_handler         = ver_http_handler,
+        .user_data             = &vc,
     };
     esp_http_client_handle_t ver_client = esp_http_client_init(&ver_cfg);
-
-    char ver_buf[VER_BUF_SIZE] = {0};
-    esp_err_t err = esp_http_client_open(ver_client, 0);
-    if (err != ESP_OK) {
-        esp_http_client_cleanup(ver_client);
+    if (!ver_client) {
         notify(FOTA_ERROR, 0, "Version check failed");
         vTaskDelete(NULL);
         return;
     }
-    esp_http_client_fetch_headers(ver_client);
-    int rd = esp_http_client_read(ver_client, ver_buf, sizeof(ver_buf) - 1);
-    esp_http_client_close(ver_client);
+    esp_err_t err = esp_http_client_perform(ver_client);
+    int http_status = esp_http_client_get_status_code(ver_client);
     esp_http_client_cleanup(ver_client);
 
-    if (rd <= 0) {
-        notify(FOTA_ERROR, 0, "Empty version response");
+    if (err != ESP_OK || http_status != 200 || vc.len == 0) {
+        ESP_LOGE(TAG, "Version fetch failed: %s status=%d len=%d",
+                 esp_err_to_name(err), http_status, vc.len);
+        notify(FOTA_ERROR, 0, "Version check failed");
         vTaskDelete(NULL);
         return;
     }
