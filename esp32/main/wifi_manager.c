@@ -6,6 +6,7 @@
 #include "esp_netif.h"
 #include "esp_log.h"
 #include "esp_sntp.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_hosted_event.h"
@@ -13,7 +14,7 @@
 
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
-#define WIFI_MAX_RETRY     5
+#define WIFI_MAX_RETRY     INT32_MAX   /* keep retrying forever */
 #define NVS_NS             "wifi_creds"
 
 static const char *TAG = "wifi";
@@ -26,6 +27,10 @@ static volatile bool s_time_synced = false;
 static volatile bool     s_scan_done  = false;
 static uint16_t          s_ap_count   = 0;
 static wifi_ap_record_t  s_ap_recs[20];
+
+/* retry timer — fires on the default event loop task so it doesn't
+ * block the WiFi event handler that calls it */
+static esp_timer_handle_t s_retry_timer;
 
 /* dynamic connect state */
 static volatile wm_state_t s_state          = WM_IDLE;
@@ -53,6 +58,11 @@ static void start_sntp(void)
     esp_sntp_setservername(0, "pool.ntp.org");
     sntp_set_time_sync_notification_cb(sntp_sync_cb);
     esp_sntp_init();
+}
+
+static void retry_timer_cb(void *arg)
+{
+    esp_wifi_connect();
 }
 
 /* ── Hosted transport event handler ────────────────────────────── */
@@ -95,11 +105,14 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
             s_retry = 0;
         } else if (s_has_credentials) {
             s_retry++;
-            /* back off: 2s for first few retries, 10s after that */
+            /* back off: 2s for first few retries, 10s after that.
+             * Use a one-shot timer so the event loop is never blocked —
+             * vTaskDelay here would prevent SDIO recovery events from
+             * being delivered while the backoff is sleeping. */
             uint32_t delay_ms = (s_retry <= 3) ? 2000 : 10000;
             ESP_LOGI(TAG, "Retry %d (backoff %lu ms)", s_retry, (unsigned long)delay_ms);
-            vTaskDelay(pdMS_TO_TICKS(delay_ms));
-            esp_wifi_connect();
+            esp_timer_stop(s_retry_timer);
+            esp_timer_start_once(s_retry_timer, (uint64_t)delay_ms * 1000);
         } else {
             s_state = WM_FAILED;
             xEventGroupSetBits(s_eg, WIFI_FAIL_BIT);
@@ -130,6 +143,13 @@ void wifi_manager_init(void)
     ESP_ERROR_CHECK(ret);
 
     s_eg = xEventGroupCreate();
+
+    esp_timer_create_args_t retry_args = {
+        .callback = retry_timer_cb,
+        .name     = "wifi_retry",
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&retry_args, &s_retry_timer));
+
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_sta();
