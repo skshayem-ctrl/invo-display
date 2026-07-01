@@ -142,34 +142,46 @@ static void fota_task(void *arg)
         return;
     }
 
-    /* 3. Version check — use perform() so redirects are followed and
-     *    the full request/response cycle is retried cleanly after an SDIO blip */
+    /* 3. Version check — retry up to 3 times with 10 s gap.
+     *    WiFi reconnects quickly after an SDIO blip but DNS takes a few more
+     *    seconds; retrying avoids a spurious getaddrinfo failure. */
     notify(FOTA_CHECKING, 0, "Checking for updates...");
 
-    char ver_buf[VER_BUF_SIZE] = {0};
-    ver_collect_t vc = { .buf = ver_buf, .len = 0, .max = VER_BUF_SIZE - 1 };
+    char ver_buf[VER_BUF_SIZE];
+    esp_err_t err = ESP_FAIL;
+    int http_status = 0;
 
-    esp_http_client_config_t ver_cfg = {
-        .url                   = FOTA_VERSION_URL,
-        .timeout_ms            = 15000,
-        .crt_bundle_attach     = esp_crt_bundle_attach,
-        .max_redirection_count = 5,
-        .event_handler         = ver_http_handler,
-        .user_data             = &vc,
-    };
-    esp_http_client_handle_t ver_client = esp_http_client_init(&ver_cfg);
-    if (!ver_client) {
-        notify(FOTA_ERROR, 0, "Version check failed");
-        vTaskDelete(NULL);
-        return;
+    for (int vtry = 0; vtry < 3; vtry++) {
+        if (vtry > 0) {
+            ESP_LOGW(TAG, "Version check retry %d/3 in 10s...", vtry + 1);
+            vTaskDelay(pdMS_TO_TICKS(10000));
+            if (!wifi_manager_connected()) continue;
+        }
+
+        memset(ver_buf, 0, sizeof(ver_buf));
+        ver_collect_t vc = { .buf = ver_buf, .len = 0, .max = VER_BUF_SIZE - 1 };
+
+        esp_http_client_config_t ver_cfg = {
+            .url                   = FOTA_VERSION_URL,
+            .timeout_ms            = 15000,
+            .crt_bundle_attach     = esp_crt_bundle_attach,
+            .max_redirection_count = 5,
+            .event_handler         = ver_http_handler,
+            .user_data             = &vc,
+        };
+        esp_http_client_handle_t ver_client = esp_http_client_init(&ver_cfg);
+        if (!ver_client) continue;
+        err = esp_http_client_perform(ver_client);
+        http_status = esp_http_client_get_status_code(ver_client);
+        esp_http_client_cleanup(ver_client);
+
+        if (err == ESP_OK && http_status == 200 && vc.len > 0) break;
+        ESP_LOGW(TAG, "Version fetch attempt %d failed: %s status=%d len=%d",
+                 vtry + 1, esp_err_to_name(err), http_status, vc.len);
     }
-    esp_err_t err = esp_http_client_perform(ver_client);
-    int http_status = esp_http_client_get_status_code(ver_client);
-    esp_http_client_cleanup(ver_client);
 
-    if (err != ESP_OK || http_status != 200 || vc.len == 0) {
-        ESP_LOGE(TAG, "Version fetch failed: %s status=%d len=%d",
-                 esp_err_to_name(err), http_status, vc.len);
+    if (err != ESP_OK || http_status != 200 || ver_buf[0] == '\0') {
+        ESP_LOGE(TAG, "Version check failed after 3 attempts");
         notify(FOTA_ERROR, 0, "Version check failed");
         vTaskDelete(NULL);
         return;
