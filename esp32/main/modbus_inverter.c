@@ -27,6 +27,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
+#include <math.h>
 
 #define TAG           "modbus"
 
@@ -207,25 +208,31 @@ static void modbus_task(void *arg)
         int fault        = (op_st >> 11) & 1;
         float out_v      = is_bypassing ? raw_grid_v : inv_out_v;
 
-        if ((grid_hz > 0.0f && grid_hz < 44.0f) || grid_hz > 56.0f) {
-            ESP_LOGW(TAG, "Bad grid_hz %.2f — discard", grid_hz);
-            vTaskDelay(pdMS_TO_TICKS(3000)); continue;
-        }
         if ((out_hz > 0.0f && out_hz < 44.0f) || out_hz > 56.0f) {
             ESP_LOGW(TAG, "Bad out_hz %.2f — discard", out_hz);
             vTaskDelay(pdMS_TO_TICKS(3000)); continue;
+        }
+
+        /* Bad grid_hz means AC is gone — zero grid data, keep rest */
+        if ((grid_hz > 0.0f && grid_hz < 44.0f) || grid_hz > 56.0f) {
+            ESP_LOGW(TAG, "Bad grid_hz %.2f — grid data zeroed", grid_hz);
+            grid_hz = 0.0f;
+            raw_grid_v = 0.0f;
         }
 
         int batt_ok = (batt_v >= 28.8f && batt_v <= 57.6f);
 
         float grid_v = raw_grid_v >= 80.0f ? raw_grid_v : 0.0f;
 
+        /* Watt register is unreliable in both modes — always use V×A */
+        int out_w_used = (int)(out_v * fabsf(out_a));
+
         /* ── Write to gd ────────────────────────────────────────── */
         lvgl_acquire();
         gd.solar_kw  = pv_w > 0  ? (float)pv_w / 1000.0f : 0.0f;
         gd.pv_v      = pv_v  > 0.0f ? pv_v  : 0.0f;
         gd.pv_a      = pv_a  > 0.0f ? pv_a  : 0.0f;
-        gd.load_kw   = out_w > 0  ? (float)out_w / 1000.0f : 0.0f;
+        gd.load_kw   = out_w_used > 20 ? (float)out_w_used / 1000.0f : 0.0f;
         gd.batt_pct  = 0;   /* populated from BMS later */
         gd.batt_v    = batt_ok ? batt_v : 0.0f;
         gd.batt_a    = batt_a;
@@ -250,10 +257,10 @@ static void modbus_task(void *arg)
 
         ESP_LOGI(TAG,
             "pv=%.1fV/%.1fA/%dW batt=%.1fV/%.1fA "
-            "out=%.1fV/%.2fHz/%dW grid=%.1fV/%.2fHz temp=%.1fC "
+            "out=%.1fV/%.2fHz/%dW/%.1fA grid=%.1fV/%.2fHz temp=%.1fC "
             "inv=%d bypass=%d ac_chg=%d fault=%d op_st=0x%04X",
             pv_v, pv_a, pv_w, batt_v, batt_a,
-            out_v, out_hz, out_w, grid_v, grid_hz, inv_t,
+            out_v, out_hz, out_w_used, out_a, grid_v, grid_hz, inv_t,
             inv_on, is_bypassing, ac_chg, fault, op_st);
 
         vTaskDelay(pdMS_TO_TICKS(3000));
