@@ -104,6 +104,9 @@ jobs:
           # Docker runs as root so the file may be root-owned — copy it out
           sudo cp esp32/build/invo-esp32.bin "$BIN"
           gh release upload "$TAG" "$BIN" --clobber
+          # Fixed-name asset — FOTA_BIN_URL uses /releases/latest/download/invo-esp32.bin
+          sudo cp esp32/build/invo-esp32.bin invo-esp32.bin
+          gh release upload "$TAG" invo-esp32.bin --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
