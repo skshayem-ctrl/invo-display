@@ -9,13 +9,14 @@
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
-#include "cJSON.h"
 #include "wifi_manager.h"
 
 #define TAG             "fota"
 #define OTA_CHUNK_SIZE  512
-#define OTA_CHUNK_SLEEP 50    /* ms — yield to SDIO write task between flash writes */
-#define VER_BUF_SIZE    512
+#define OTA_CHUNK_SLEEP 50   /* ms — yield to SDIO write task between flash writes */
+
+/* IDF 5.x magic in esp_app_desc_t (at binary offset 32) */
+#define ESP_APP_DESC_MAGIC  0xABCD5432u
 
 static volatile fota_state_t s_state = FOTA_IDLE;
 static fota_cb_t s_cb;
@@ -36,30 +37,30 @@ static bool version_is_newer(const char *remote, const char *local)
     return rp > lp;
 }
 
-/* Collects HTTP response body for the version.json fetch */
-typedef struct {
-    char *buf;
-    int   len;
-    int   max;
-} ver_collect_t;
-
-static esp_err_t ver_http_handler(esp_http_client_event_t *evt)
+/* esp_app_desc_t starts at binary offset 32, 'version' field is at offset 16
+ * within that struct → absolute binary offset 48. */
+static bool parse_app_version(const uint8_t *buf, int len, char *out, int out_len)
 {
-    if (evt->event_id != HTTP_EVENT_ON_DATA) return ESP_OK;
-    ver_collect_t *vc = (ver_collect_t *)evt->user_data;
-    int copy = evt->data_len;
-    if (vc->len + copy >= vc->max) return ESP_OK; /* truncate silently */
-    memcpy(vc->buf + vc->len, evt->data, copy);
-    vc->len += copy;
-    return ESP_OK;
+    if (len < 80) return false;
+    uint32_t magic;
+    memcpy(&magic, buf + 32, sizeof(magic));
+    if (magic != ESP_APP_DESC_MAGIC) {
+        ESP_LOGW(TAG, "app_desc magic mismatch: 0x%08lx", (unsigned long)magic);
+        return false;
+    }
+    snprintf(out, out_len, "%.*s", 32, (const char *)(buf + 48));
+    return true;
 }
 
 typedef struct {
     esp_ota_handle_t  ota_handle;
+    const char       *local_ver;
     uint8_t          *buf;
     int               buf_fill;
     int               total_written;
     int               content_length;
+    bool              version_parsed;
+    bool              bail_early;   /* same version — intentional abort */
     bool              error;
     fota_cb_t         cb;
 } ota_ctx_t;
@@ -76,7 +77,7 @@ static esp_err_t ota_http_handler(esp_http_client_event_t *evt)
         break;
 
     case HTTP_EVENT_ON_DATA: {
-        if (ctx->error) return ESP_FAIL;
+        if (ctx->error || ctx->bail_early) return ESP_FAIL;
 
         const uint8_t *src    = (const uint8_t *)evt->data;
         int            remain = evt->data_len;
@@ -89,7 +90,31 @@ static esp_err_t ota_http_handler(esp_http_client_event_t *evt)
             src           += copy;
             remain        -= copy;
 
+            /* Version check inline: read from the first 80 bytes of the binary.
+             * This avoids a separate version.json TLS connection entirely. */
+            if (!ctx->version_parsed && ctx->buf_fill >= 80) {
+                char remote_ver[33] = {0};
+                if (!parse_app_version(ctx->buf, ctx->buf_fill,
+                                       remote_ver, sizeof(remote_ver))) {
+                    ESP_LOGE(TAG, "Failed to parse remote version from binary");
+                    ctx->error = true;
+                    return ESP_FAIL;
+                }
+                ctx->version_parsed = true;
+                ESP_LOGI(TAG, "local=%s remote=%s", ctx->local_ver, remote_ver);
+
+                if (!version_is_newer(remote_ver, ctx->local_ver)) {
+                    ctx->bail_early = true;
+                    return ESP_FAIL; /* abort download cleanly */
+                }
+                if (ctx->cb) ctx->cb(FOTA_DOWNLOADING, 0, "Downloading...");
+            }
+
             if (ctx->buf_fill == OTA_CHUNK_SIZE) {
+                if (!ctx->version_parsed) {
+                    ctx->error = true;
+                    return ESP_FAIL;
+                }
                 esp_err_t err = esp_ota_write(ctx->ota_handle, ctx->buf, ctx->buf_fill);
                 if (err != ESP_OK) {
                     ESP_LOGE(TAG, "ota_write: %s", esp_err_to_name(err));
@@ -133,7 +158,9 @@ static void fota_task(void *arg)
         return;
     }
 
-    /* 2. Heap — need chunk buf + OTA write buffers */
+    notify(FOTA_CHECKING, 0, "Checking for updates...");
+
+    /* 2. Heap */
     size_t heap_free = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     ESP_LOGI(TAG, "Internal DRAM largest block: %u B", (unsigned)heap_free);
     if (heap_free < 25000) {
@@ -142,88 +169,10 @@ static void fota_task(void *arg)
         return;
     }
 
-    /* 3. Version check — retry up to 3 times with 10 s gap.
-     *    WiFi reconnects quickly after an SDIO blip but DNS takes a few more
-     *    seconds; retrying avoids a spurious getaddrinfo failure. */
-    notify(FOTA_CHECKING, 0, "Checking for updates...");
+    /* 3. Let any in-flight weather/NTP traffic clear the SDIO queue */
+    vTaskDelay(pdMS_TO_TICKS(1000));
 
-    char ver_buf[VER_BUF_SIZE];
-    esp_err_t err = ESP_FAIL;
-    int http_status = 0;
-
-    for (int vtry = 0; vtry < 3; vtry++) {
-        if (vtry > 0) {
-            ESP_LOGW(TAG, "Version check retry %d/3 in 10s...", vtry + 1);
-            vTaskDelay(pdMS_TO_TICKS(10000));
-            if (!wifi_manager_connected()) continue;
-        }
-
-        memset(ver_buf, 0, sizeof(ver_buf));
-        ver_collect_t vc = { .buf = ver_buf, .len = 0, .max = VER_BUF_SIZE - 1 };
-
-        esp_http_client_config_t ver_cfg = {
-            .url                   = FOTA_VERSION_URL,
-            .timeout_ms            = 15000,
-            .crt_bundle_attach     = esp_crt_bundle_attach,
-            .max_redirection_count = 5,
-            .event_handler         = ver_http_handler,
-            .user_data             = &vc,
-        };
-        esp_http_client_handle_t ver_client = esp_http_client_init(&ver_cfg);
-        if (!ver_client) continue;
-        err = esp_http_client_perform(ver_client);
-        http_status = esp_http_client_get_status_code(ver_client);
-        esp_http_client_cleanup(ver_client);
-
-        /* SDIO blips can corrupt the TCP buffer and still return HTTP 200 —
-         * validate the response starts with '{' before accepting it */
-        if (err == ESP_OK && http_status == 200 && vc.len > 0 && ver_buf[0] == '{') break;
-        ESP_LOGW(TAG, "Version fetch attempt %d bad: %s status=%d len=%d first=0x%02x",
-                 vtry + 1, esp_err_to_name(err), http_status, vc.len,
-                 (unsigned char)ver_buf[0]);
-    }
-
-    if (ver_buf[0] != '{') {
-        ESP_LOGE(TAG, "Version check failed after 3 attempts");
-        notify(FOTA_ERROR, 0, "Version check failed");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    cJSON *root = cJSON_Parse(ver_buf);
-    if (!root) {
-        notify(FOTA_ERROR, 0, "Bad version JSON");
-        vTaskDelete(NULL);
-        return;
-    }
-    cJSON *jver = cJSON_GetObjectItem(root, "version");
-    cJSON *jurl = cJSON_GetObjectItem(root, "url");
-    if (!cJSON_IsString(jver) || !cJSON_IsString(jurl)) {
-        cJSON_Delete(root);
-        notify(FOTA_ERROR, 0, "Missing version/url");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    const char *remote_ver = jver->valuestring;
-    const char *local_ver  = esp_app_get_description()->version;
-    char fw_url[256];
-    snprintf(fw_url, sizeof(fw_url), "%s", jurl->valuestring);
-    cJSON_Delete(root);
-
-    ESP_LOGI(TAG, "local=%s remote=%s", local_ver, remote_ver);
-
-    if (!version_is_newer(remote_ver, local_ver)) {
-        char msg[64];
-        snprintf(msg, sizeof(msg), "Already up to date (%s)", local_ver);
-        notify(FOTA_UP_TO_DATE, 100, msg);
-        vTaskDelete(NULL);
-        return;
-    }
-
-    /* 4. Download in 512-byte chunks — throttled to keep SDIO alive */
-    notify(FOTA_DOWNLOADING, 0, "Downloading...");
-
+    /* 4. Chunk buffer */
     uint8_t *chunk_buf = malloc(OTA_CHUNK_SIZE);
     if (!chunk_buf) {
         notify(FOTA_ERROR, 0, "OOM");
@@ -231,14 +180,17 @@ static void fota_task(void *arg)
         return;
     }
 
-    esp_err_t ota_final = ESP_FAIL;
+    const char *local_ver  = esp_app_get_description()->version;
+    esp_err_t   ota_final  = ESP_FAIL;
+    bool        up_to_date = false;
 
-    for (int attempt = 0; attempt < 5; attempt++) {
+    /* 5. Download binary — version is checked inline from the first 80 bytes.
+     *    Only one TLS connection total: no separate version.json fetch. */
+    for (int attempt = 0; attempt < 5 && !up_to_date; attempt++) {
         if (attempt > 0) {
             char rmsg[24];
             snprintf(rmsg, sizeof(rmsg), "Retry %d/5...", attempt);
             notify(FOTA_DOWNLOADING, 0, rmsg);
-            /* 30 s: enough for SDIO cascades from prior attempt to fully settle */
             vTaskDelay(pdMS_TO_TICKS(30000));
             if (!wifi_manager_connected()) continue;
         }
@@ -247,24 +199,27 @@ static void fota_task(void *arg)
         if (!update_part) { ESP_LOGE(TAG, "No OTA partition"); continue; }
 
         esp_ota_handle_t ota_handle = 0;
-        err = esp_ota_begin(update_part, OTA_SIZE_UNKNOWN, &ota_handle);
+        esp_err_t err = esp_ota_begin(update_part, OTA_SIZE_UNKNOWN, &ota_handle);
         if (err != ESP_OK) { ESP_LOGE(TAG, "ota_begin: %s", esp_err_to_name(err)); continue; }
 
         ota_ctx_t ctx = {
             .ota_handle     = ota_handle,
+            .local_ver      = local_ver,
             .buf            = chunk_buf,
             .buf_fill       = 0,
             .total_written  = 0,
             .content_length = 0,
+            .version_parsed = false,
+            .bail_early     = false,
             .error          = false,
             .cb             = s_cb,
         };
 
         esp_http_client_config_t dl_cfg = {
-            .url                   = fw_url,
+            .url                   = FOTA_BIN_URL,
             .timeout_ms            = 120000,
             .crt_bundle_attach     = esp_crt_bundle_attach,
-            .buffer_size           = 16384,  /* GitHub CDN x-amz-id-2 headers exceed 8 KB */
+            .buffer_size           = 16384,  /* GitHub CDN headers can exceed 8 KB */
             .buffer_size_tx        = 4096,   /* redirect URL with X-Amz-* params */
             .keep_alive_enable     = true,
             .keep_alive_idle       = 10,
@@ -283,6 +238,15 @@ static void fota_task(void *arg)
 
         err = esp_http_client_perform(client);
         esp_http_client_cleanup(client);
+
+        if (ctx.bail_early) {
+            esp_ota_abort(ota_handle);
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Already up to date (%s)", local_ver);
+            notify(FOTA_UP_TO_DATE, 100, msg);
+            up_to_date = true;
+            break;
+        }
 
         if (ctx.error || err != ESP_OK) {
             ESP_LOGE(TAG, "Download failed: %s ctx.error=%d", esp_err_to_name(err), ctx.error);
@@ -318,6 +282,11 @@ static void fota_task(void *arg)
     }
 
     free(chunk_buf);
+
+    if (up_to_date) {
+        vTaskDelete(NULL);
+        return;
+    }
 
     if (ota_final != ESP_OK) {
         notify(FOTA_ERROR, 0, "Download failed (5 retries)");
