@@ -10,35 +10,15 @@ CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY=y
 CONFIG_SPIRAM_BOOT_INIT=y
 CONFIG_SPIRAM_USE_MALLOC=y
 CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y
-CONFIG_ESP_HOSTED_SDIO_CLOCK_FREQ_KHZ=20000
-CONFIG_ESP_HOSTED_TRANSPORT_RESTART_ON_FAILURE=n
-CONFIG_ESP_HOSTED_SDIO_TX_Q_SIZE=64
-CONFIG_ESP_HOSTED_SDIO_RX_Q_SIZE=64
-# TCP window = 1 MSS: server sends only ONE 1460-B segment before waiting for ACK.
-# C6 finishes forwarding it over SDIO in ~0.6ms then sits idle — P4's write
-# succeeds on first retry at 10ms.  With 4×MSS (5760) the server pipelines
-# 4 segments, C6 stays in TX mode for ~2.4ms, P4 retries fail → blip cascade.
+# Official Espressif settings for P4+C6 SDIO (from WIFI_Weather_Bluetooth reference)
+CONFIG_ESP_HOSTED_SDIO_CLOCK_FREQ_KHZ=40000
+CONFIG_ESP_HOSTED_TRANSPORT_RESTART_ON_FAILURE=y
+CONFIG_ESP_HOSTED_SDIO_TX_Q_SIZE=20
+CONFIG_ESP_HOSTED_SDIO_RX_Q_SIZE=20
 CONFIG_LWIP_TCP_WND_DEFAULT=1460
 CONFIG_LWIP_TCP_SND_BUF_DEFAULT=8760
-# TLS 1.3 early-data streams firmware before P4's Finished, saturating C6 SDIO TX.
-# TLS 1.2 requires server to wait for client Finished before any app data.
-CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=n
-# IN stays at 16384 (GitHub CDN sends large records). OUT at 4096 is fine
-# since we only send small records (ACKs, HTTP GET).
-CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=16384
+# OUT at 4096 is enough for HTTP GET/small requests; IN uses default 16384
 CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=4096
-# Dynamic buffers cut peak TLS heap from ~50 KB to ~25 KB.
-CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
-CONFIG_MBEDTLS_DYNAMIC_FREE_PEER_CERT=y
-CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
-# Hardware AES/SHA need DMA-capable internal DRAM on every block — fails when
-# heap is fragmented during OTA. Software fallback uses PSRAM instead.
-CONFIG_MBEDTLS_HARDWARE_AES=n
-CONFIG_MBEDTLS_HARDWARE_SHA=n
-# Route mbedTLS malloc to default heap (PSRAM via SPIRAM_USE_MALLOC) — no DMA
-# requirement with software crypto, so the 16 KB TLS RX buffer is trivial.
-CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC=n
-CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
 CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
 CONFIG_ESP_HOSTED_CP_TARGET_ESP32C6=y
 CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
