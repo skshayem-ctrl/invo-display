@@ -175,12 +175,15 @@ static void fota_task(void *arg)
         http_status = esp_http_client_get_status_code(ver_client);
         esp_http_client_cleanup(ver_client);
 
-        if (err == ESP_OK && http_status == 200 && vc.len > 0) break;
-        ESP_LOGW(TAG, "Version fetch attempt %d failed: %s status=%d len=%d",
-                 vtry + 1, esp_err_to_name(err), http_status, vc.len);
+        /* SDIO blips can corrupt the TCP buffer and still return HTTP 200 —
+         * validate the response starts with '{' before accepting it */
+        if (err == ESP_OK && http_status == 200 && vc.len > 0 && ver_buf[0] == '{') break;
+        ESP_LOGW(TAG, "Version fetch attempt %d bad: %s status=%d len=%d first=0x%02x",
+                 vtry + 1, esp_err_to_name(err), http_status, vc.len,
+                 (unsigned char)ver_buf[0]);
     }
 
-    if (err != ESP_OK || http_status != 200 || ver_buf[0] == '\0') {
+    if (ver_buf[0] != '{') {
         ESP_LOGE(TAG, "Version check failed after 3 attempts");
         notify(FOTA_ERROR, 0, "Version check failed");
         vTaskDelete(NULL);
