@@ -113,15 +113,20 @@ jobs:
       - name: Push binary to binaries branch (raw.githubusercontent.com FOTA)
         run: |
           TAG="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+          # Use a clean temp repo — avoids untracked-file conflicts in main workspace
+          BINDIR=$(mktemp -d)
+          cd "$BINDIR"
+          git init
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Orphan branch — only the latest binary lives here, no history bloat
-          git checkout --orphan binaries-tmp
-          git reset --quiet
-          sudo cp esp32/build/invo-esp32.bin invo-esp32.bin
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}"
+          sudo cp "$GITHUB_WORKSPACE/esp32/build/invo-esp32.bin" invo-esp32.bin
           git add invo-esp32.bin
           git commit -m "chore: binary ${TAG} [skip ci]"
           git push origin HEAD:refs/heads/binaries --force
+          cd -
+          rm -rf "$BINDIR"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
