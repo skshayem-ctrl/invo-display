@@ -15,6 +15,8 @@
 #define OTA_CHUNK_SIZE  512
 #define OTA_CHUNK_SLEEP 50   /* ms — yield to SDIO write task between flash writes */
 
+volatile bool fota_active = false;
+
 static volatile fota_state_t s_state = FOTA_IDLE;
 static fota_cb_t s_cb;
 
@@ -186,18 +188,23 @@ static void fota_task(void *arg)
         return;
     }
 
+    /* Pause weather fetches before touching SDIO with any HTTPS traffic */
+    fota_active = true;
+
     notify(FOTA_CHECKING, 0, "Checking for updates...");
 
     size_t heap_free = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     ESP_LOGI(TAG, "Internal DRAM largest block: %u B", (unsigned)heap_free);
     if (heap_free < 25000) {
+        fota_active = false;
         notify(FOTA_ERROR, 0, "Low heap — retry later");
         vTaskDelete(NULL);
         return;
     }
 
-    /* Let any in-flight weather/NTP traffic clear the SDIO queue */
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    /* Wait for any in-flight weather/AQI fetch to fully finish and DNS to recover.
+     * AQI HTTP timeout is ~30s; blip cascade + DNS recovery adds ~15s on top. */
+    vTaskDelay(pdMS_TO_TICKS(30000));
 
     const char *local_ver = esp_app_get_description()->version;
 
@@ -213,12 +220,14 @@ static void fota_task(void *arg)
     }
 
     if (!version_ok) {
+        fota_active = false;
         notify(FOTA_ERROR, 0, "Version check failed");
         vTaskDelete(NULL);
         return;
     }
 
     if (!version_is_newer(remote_ver, local_ver)) {
+        fota_active = false;
         char msg[64];
         snprintf(msg, sizeof(msg), "Already up to date (%s)", local_ver);
         notify(FOTA_UP_TO_DATE, 100, msg);
@@ -226,7 +235,11 @@ static void fota_task(void *arg)
         return;
     }
 
-    /* Step 2: Newer version confirmed — download the binary. */
+    /* Step 2: Newer version confirmed.
+     * Wait for version.json TCP teardown retransmits to finish (exponential
+     * backoff: 1.4s→3s→6s→12s) and DNS to fully recover before touching github.com. */
+    vTaskDelay(pdMS_TO_TICKS(30000));
+
     notify(FOTA_DOWNLOADING, 0, "Downloading...");
 
     uint8_t *chunk_buf = malloc(OTA_CHUNK_SIZE);
@@ -323,6 +336,7 @@ static void fota_task(void *arg)
     free(chunk_buf);
 
     if (ota_final != ESP_OK) {
+        fota_active = false;
         notify(FOTA_ERROR, 0, "Download failed (5 retries)");
         vTaskDelete(NULL);
         return;
