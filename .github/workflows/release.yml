@@ -110,12 +110,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Push binary to binaries branch (raw.githubusercontent.com FOTA)
+        run: |
+          TAG="${{ github.ref_name }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Orphan branch — only the latest binary lives here, no history bloat
+          git checkout --orphan binaries-tmp
+          git reset --quiet
+          sudo cp esp32/build/invo-esp32.bin invo-esp32.bin
+          git add invo-esp32.bin
+          git commit -m "chore: binary ${TAG} [skip ci]"
+          git push origin HEAD:refs/heads/binaries --force
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Update esp32/version.json and push to main
         run: |
           VER="${{ steps.ver.outputs.clean }}"
           TAG="${{ github.ref_name }}"
           REPO="${{ github.repository }}"
-          BIN_URL="https://github.com/${REPO}/releases/download/${TAG}/invo-esp32-${TAG}.bin"
+          RAW_URL="https://raw.githubusercontent.com/${REPO}/binaries/invo-esp32.bin"
 
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -123,7 +138,7 @@ jobs:
           git checkout origin/master
 
           printf '{\n  "version": "%s",\n  "url": "%s"\n}\n' \
-            "$VER" "$BIN_URL" > esp32/version.json
+            "$VER" "$RAW_URL" > esp32/version.json
 
           git add esp32/version.json
           if git diff --cached --quiet; then

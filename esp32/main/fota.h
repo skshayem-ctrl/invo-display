@@ -5,8 +5,9 @@
 #define FOTA_VER_URL \
     "https://raw.githubusercontent.com/skshayem-ctrl/invo-display/master/esp32/version.json"
 
-/* Binary download — only fetched when version check confirms an update. */
+/* Binary — same raw.githubusercontent.com CDN as version.json (Fastly, one TLS
+ * handshake, no github.com redirect). CI pushes binary to the binaries branch. */
 #define FOTA_BIN_URL \
-    "https://github.com/skshayem-ctrl/invo-display/releases/latest/download/invo-esp32.bin"
+    "https://raw.githubusercontent.com/skshayem-ctrl/invo-display/binaries/invo-esp32.bin"
 
 #include "../../src/fota.h"
