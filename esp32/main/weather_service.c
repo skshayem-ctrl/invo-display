@@ -13,6 +13,8 @@
 #include "weather_service.h"
 #include "weather_icon.h"
 
+extern volatile bool fota_active;
+
 #define WEATHER_URL \
     "http://api.open-meteo.com/v1/forecast" \
     "?latitude=12.97&longitude=77.59" \
@@ -299,10 +301,16 @@ static void weather_task(void *arg)
         for (int w = 0; !wifi_manager_connected() && w < 30; w++)
             vTaskDelay(pdMS_TO_TICKS(2000));
 
+        if (fota_active) {
+            vTaskDelay(pdMS_TO_TICKS(10000));
+            continue;
+        }
+
         bool wx_ok  = weather_fetch();
         /* 15s gap: let TCP teardown and DNS cache flush before AQI opens
          * a new TLS session to a different hostname over SDIO */
         vTaskDelay(pdMS_TO_TICKS(15000));
+        if (fota_active) continue;
         bool aqi_ok = aqi_fetch();
         if (wx_ok || aqi_ok)
             update_ui();
