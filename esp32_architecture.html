@@ -1,0 +1,1350 @@
+<title>INVO Display — How It's Built</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0C1018;
+  color: #DDE6F0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  padding: 48px 24px 80px;
+  max-width: 1260px;
+  margin: 0 auto;
+}
+h1 { font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
+.sub { color: #607590; margin-top: 6px; font-size: 14px; }
+.hint { font-size: 11.5px; color: #3A5870; margin-top: 10px; }
+.hint span { color: #5A7890; }
+.section-label {
+  font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+  color: #3A5070; margin: 40px 0 16px;
+}
+
+/* ── shared chip/label styles ── */
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { font-size: 10.5px; padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,.10); line-height: 1.4; }
+.chip small { display: block; font-size: 9px; opacity: .5; margin-top: 1px; }
+.layer-name { font-size: 10px; font-weight: 700; letter-spacing: .10em; text-transform: uppercase; margin-bottom: 6px; }
+.layer-desc { font-size: 11.5px; color: #7A99B8; margin-bottom: 10px; line-height: 1.6; }
+.sub-group-label {
+  font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  color: rgba(255,255,255,.25); margin: 10px 0 5px;
+}
+.sub-group-label:first-child { margin-top: 0; }
+
+/* ── layer color themes ── */
+.app-theme .layer-name { color: #27C76A; }
+.app-theme .chip       { background: rgba(39,199,106,.10); color: #27C76A; border-color: rgba(39,199,106,.20); }
+.svc-theme .layer-name { color: #4A9FDD; }
+.svc-theme .chip       { background: rgba(74,159,221,.10); color: #4A9FDD; border-color: rgba(74,159,221,.20); }
+.mid-theme .layer-name { color: #EFA020; }
+.mid-theme .chip       { background: rgba(239,160,32,.10); color: #EFA020; border-color: rgba(239,160,32,.20); }
+.os-theme  .layer-name { color: #EFA020; }
+.os-theme  .chip       { background: rgba(239,160,32,.10); color: #EFA020; border-color: rgba(239,160,32,.20); }
+.hw-theme  .layer-name { color: #9966DD; }
+.hw-theme  .chip       { background: rgba(153,102,221,.12); color: #9966DD; border-color: rgba(153,102,221,.25); }
+.drv-chip              { background: rgba(221,78,142,.10); color: #DD4E8E; border-color: rgba(221,78,142,.22); }
+.inv-theme .layer-name { color: #20C9A0; }
+.inv-theme .chip       { background: rgba(32,201,160,.10); color: #20C9A0; border-color: rgba(32,201,160,.20); }
+
+/* ── 2D DIAGRAM — 7 columns ── */
+.arch-2d {
+  display: grid;
+  grid-template-columns: 145px 74px 145px 74px 1fr 74px 160px;
+  gap: 4px;
+}
+
+/* column headers */
+.col-head {
+  border-radius: 6px 6px 0 0; padding: 10px 12px;
+  font-size: 11.5px; font-weight: 700;
+  display: flex; flex-direction: column; gap: 2px;
+  background: #111928; border: 1px solid #1E2D45; color: #DDE6F0;
+}
+.col-head small { font-size: 9.5px; font-weight: 400; opacity: .45; letter-spacing: .04em; text-transform: uppercase; }
+.col-head.ext-head { border-color: rgba(32,201,160,.25); background: #081814; }
+.conn-head { /* spacer */ }
+
+/* P4 layer cells */
+.cell { padding: 12px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,.06); }
+.cell-p4-app { background: #0B2018; }
+.cell-p4-svc { background: #0A1C34; }
+.cell-p4-mid { background: #1A1000; }
+.cell-p4-os  { background: #1A1000; }
+.cell-p4-hw  { background: #080A14; }
+
+/* side cells */
+.side-cell { border-radius: 6px; padding: 12px 12px; display: flex; flex-direction: column; justify-content: center; }
+.side-cell.mid-theme { background: #120E00; border: 1px solid rgba(239,160,32,.12); }
+.side-cell.os-theme  { background: #120E00; border: 1px solid rgba(239,160,32,.12); }
+.side-cell.hw-theme  { background: #080A14; border: 1px solid rgba(153,102,221,.12); }
+.side-cell.inv-theme { background: #061410; border: 1px solid rgba(32,201,160,.18); }
+
+/* empty cells */
+.side-empty {
+  background: rgba(255,255,255,.02); border: 1px dashed rgba(255,255,255,.06);
+  border-radius: 6px; display: flex; align-items: center; justify-content: center;
+  font-size: 10.5px; color: #253545; font-style: italic; text-align: center; padding: 8px;
+}
+.side-empty.ext { border-color: rgba(32,201,160,.08); color: #1A4038; }
+
+/* connection columns */
+.conn-empty { }
+.conn-bridge { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; text-align: center; }
+.conn-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; line-height: 1.4; }
+.conn-sublabel { font-size: 8.5px; opacity: .45; line-height: 1.3; }
+.conn-arrows { display: flex; align-items: center; width: 100%; gap: 2px; }
+.conn-arrows .line { flex: 1; height: 2px; border-radius: 1px; }
+.conn-arrows .arrow-l, .conn-arrows .arrow-r { font-size: 10px; }
+
+.conn-driver .conn-label { color: #DD4E8E; }
+.conn-driver .conn-arrows .line { background: repeating-linear-gradient(to right, #DD4E8E 0, #DD4E8E 4px, transparent 4px, transparent 8px); }
+.conn-driver .conn-arrows .arrow-l, .conn-driver .conn-arrows .arrow-r { color: #DD4E8E; }
+
+.conn-physical .conn-label { color: #9966DD; }
+.conn-physical .conn-arrows .line { background: #9966DD; height: 3px; }
+.conn-physical .conn-arrows .arrow-l, .conn-physical .conn-arrows .arrow-r { color: #9966DD; }
+
+/* ── FLOWS ── */
+.flow-card { background: #111928; border: 1px solid #1E2D45; border-radius: 10px; padding: 18px 20px; margin-bottom: 12px; }
+.flow-title { font-weight: 700; font-size: 14px; margin-bottom: 12px; }
+.flow-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.fn { font-size: 11.5px; padding: 4px 9px; border-radius: 5px; border: 1px solid; white-space: nowrap; line-height: 1.3; }
+.fn small { display: block; font-size: 9.5px; opacity: .45; }
+.fa { color: #3A5070; font-size: 13px; }
+.fn-hw  { background: rgba(153,102,221,.10); color: #9966DD; border-color: rgba(153,102,221,.2); }
+.fn-drv { background: rgba(221,78,142,.10);  color: #DD4E8E; border-color: rgba(221,78,142,.2); }
+.fn-mid { background: rgba(239,160,32,.10);  color: #EFA020; border-color: rgba(239,160,32,.2); }
+.fn-svc { background: rgba(74,159,221,.10);  color: #4A9FDD; border-color: rgba(74,159,221,.2); }
+.fn-app { background: rgba(39,199,106,.10);  color: #27C76A; border-color: rgba(39,199,106,.2); }
+.fn-inv { background: rgba(32,201,160,.10);  color: #20C9A0; border-color: rgba(32,201,160,.2); }
+.flow-note { font-size: 12px; color: #506070; margin-top: 10px; }
+
+/* ── CODE MAP ── */
+.cm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cm-card { background: #111928; border: 1px solid #1E2D45; border-radius: 8px; overflow: hidden; }
+.cm-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid #1E2D45;
+}
+.cm-file { font-family: 'SF Mono','Cascadia Code','Consolas',monospace; font-size: 13px; font-weight: 700; color: #DDE6F0; }
+.cm-badge { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 3px; }
+.cm-badge.svc { background: rgba(74,159,221,.15); color: #4A9FDD; }
+.cm-body { padding: 14px 16px; }
+.cm-desc { font-size: 12.5px; color: #7A99B8; margin-bottom: 14px; line-height: 1.5; }
+.cm-group { margin-bottom: 12px; }
+.cm-group:last-child { margin-bottom: 0; }
+.cm-group-label { font-size: 9.5px; font-weight: 700; letter-spacing: .10em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+.cm-fns { display: flex; flex-wrap: wrap; gap: 5px; }
+.cm-fn {
+  font-family: 'SF Mono','Cascadia Code','Consolas',monospace;
+  font-size: 11px; padding: 3px 8px; border-radius: 3px;
+  border: 1px solid; white-space: nowrap;
+}
+.gl-3b  .cm-group-label { color: #EFA020; }
+.gl-3b  .cm-fn { background: rgba(239,160,32,.08); color: #EFA020; border-color: rgba(239,160,32,.18); }
+.gl-drv .cm-group-label { color: #DD4E8E; }
+.gl-drv .cm-fn { background: rgba(221,78,142,.08); color: #DD4E8E; border-color: rgba(221,78,142,.18); }
+.gl-3a  .cm-group-label { color: #EFA020; }
+.gl-3a  .cm-fn { background: rgba(239,160,32,.08); color: #EFA020; border-color: rgba(239,160,32,.18); }
+.gl-1   .cm-group-label { color: #27C76A; }
+.gl-1   .cm-fn { background: rgba(39,199,106,.08); color: #27C76A; border-color: rgba(39,199,106,.18); }
+.gl-2   .cm-group-label { color: #4A9FDD; }
+.gl-2   .cm-fn { background: rgba(74,159,221,.08); color: #4A9FDD; border-color: rgba(74,159,221,.18); }
+
+/* ── INTERACTIVE — clickable elements ── */
+[data-detail] { cursor: pointer; }
+
+.chip[data-detail], .cm-fn[data-detail], .fn[data-detail] {
+  transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease;
+  position: relative;
+}
+.chip[data-detail]:hover, .cm-fn[data-detail]:hover, .fn[data-detail]:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0,0,0,.5);
+  opacity: .88;
+}
+.cell[data-detail] {
+  transition: border-color .15s ease;
+}
+.cell[data-detail]:hover {
+  border-color: rgba(255,255,255,.18);
+}
+
+/* ── MODAL ── */
+#modal {
+  display: none;
+  position: fixed; inset: 0; z-index: 1000;
+  align-items: center; justify-content: center;
+  padding: 20px;
+}
+#modal.open { display: flex; }
+#modal-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(4,8,18,.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+#modal-panel {
+  position: relative; z-index: 1;
+  background: #111928;
+  border: 1px solid #1E3055;
+  border-radius: 14px;
+  width: 100%; max-width: 580px;
+  max-height: 84vh;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  box-shadow: 0 28px 70px rgba(0,0,0,.65);
+  animation: modalIn .18s cubic-bezier(.2,.8,.3,1) both;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(.95) translateY(12px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+#modal-accent { height: 3px; flex-shrink: 0; }
+#modal-scroll { padding: 22px 24px 28px; overflow-y: auto; }
+#modal-close {
+  position: absolute; top: 14px; right: 14px; z-index: 2;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.10);
+  color: #607590; font-size: 17px; line-height: 1;
+  width: 28px; height: 28px; border-radius: 6px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .12s, color .12s;
+}
+#modal-close:hover { background: rgba(255,255,255,.15); color: #DDE6F0; }
+#modal-type {
+  font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  margin-bottom: 8px;
+}
+#modal-title {
+  font-size: 19px; font-weight: 800; color: #DDE6F0;
+  margin-bottom: 18px; letter-spacing: -.01em;
+  padding-right: 32px;
+  line-height: 1.25;
+}
+#modal-body { font-size: 13px; line-height: 1.7; color: #8BAACC; }
+#modal-body p  { margin-bottom: 12px; }
+#modal-body p:last-child { margin-bottom: 0; }
+#modal-body h4 {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  color: #DDE6F0; margin: 18px 0 7px;
+}
+#modal-body ul, #modal-body ol { padding-left: 18px; margin-bottom: 12px; }
+#modal-body li { margin-bottom: 5px; }
+#modal-body code {
+  font-family: 'SF Mono','Cascadia Code',Consolas,monospace;
+  font-size: 11.5px; background: rgba(255,255,255,.08);
+  padding: 1px 5px; border-radius: 3px; color: #DDE6F0;
+}
+#modal-body strong { color: #DDE6F0; font-weight: 600; }
+
+@media (max-width: 700px) { .cm-grid { grid-template-columns: 1fr; } }
+@media (max-width: 800px) {
+  .arch-2d { grid-template-columns: 1fr; }
+  .conn-bridge, .side-empty, .side-cell, .conn-empty { display: none; }
+}
+</style>
+
+<!-- ── MODAL ── -->
+<div id="modal">
+  <div id="modal-backdrop"></div>
+  <div id="modal-panel">
+    <div id="modal-accent"></div>
+    <button id="modal-close" aria-label="Close">×</button>
+    <div id="modal-scroll">
+      <div id="modal-type"></div>
+      <h2 id="modal-title"></h2>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+</div>
+
+<h1>How the INVO Display is built</h1>
+<p class="sub">P4 is the hub. Three external devices connect to it — each differently.</p>
+<p class="hint">Click any highlighted chip, cell, or function to learn more. <span>Everything with a pointer cursor has details.</span></p>
+
+<p class="section-label">Architecture — top to bottom</p>
+
+<div class="arch-2d">
+
+  <!-- ── HEADERS ── -->
+  <div class="col-head ext-head">Inverter <small>external device — RS485 cable</small></div>
+  <div class="conn-head"></div>
+  <div class="col-head">ESP32-C6 <small>WiFi coprocessor — SDIO bus</small></div>
+  <div class="conn-head"></div>
+  <div class="col-head">ESP32-P4 <small>main processor — the hub</small></div>
+  <div class="conn-head"></div>
+  <div class="col-head">Display + Touch <small>DSI panel + GT911</small></div>
+
+  <!-- ── LAYER 1 ── -->
+  <div class="side-empty ext">external device — no UI here</div>
+  <div class="conn-empty"></div>
+  <div class="side-empty">no app code</div>
+  <div class="conn-empty"></div>
+  <div class="cell cell-p4-app app-theme" data-detail="layer1">
+    <div class="layer-name">Layer 1 — What you see</div>
+    <p class="layer-desc">The screens. Your code. The only layer the user touches.</p>
+    <div class="chips">
+      <div class="chip" data-detail="chip-home-screen">Home screen<small>battery arc, solar/load, clock, weather</small></div>
+      <div class="chip" data-detail="chip-detail-screens">Detail screens<small>battery · solar · weather</small></div>
+      <div class="chip">Touch navigation<small>tap, back button</small></div>
+    </div>
+  </div>
+  <div class="conn-empty"></div>
+  <div class="side-empty">no app code</div>
+
+  <!-- ── LAYER 2 ── -->
+  <div class="side-empty ext">runs its own firmware</div>
+  <div class="conn-empty"></div>
+  <div class="side-empty">no services</div>
+  <div class="conn-empty"></div>
+  <div class="cell cell-p4-svc svc-theme" data-detail="layer2">
+    <div class="layer-name">Layer 2 — Background workers</div>
+    <p class="layer-desc">Four tasks running silently, each with one job.</p>
+    <div class="chips">
+      <div class="chip" data-detail="chip-wifi-manager">WiFi manager<small>keeps WiFi alive, syncs the clock</small></div>
+      <div class="chip" data-detail="chip-weather-svc">Weather service<small>fetches temp + AQI every 10 min</small></div>
+      <div class="chip" data-detail="chip-modbus-svc">Modbus service<small>reads inverter power data every 3 s</small></div>
+      <div class="chip" data-detail="chip-fota">FOTA<small>auto-updates firmware from GitHub</small></div>
+    </div>
+  </div>
+  <div class="conn-empty"></div>
+  <div class="side-empty">no services</div>
+
+  <!-- ── LAYER 3b ── -->
+  <div class="side-cell inv-theme">
+    <div class="layer-name">Modbus RTU slave</div>
+    <p class="layer-desc" style="font-size:10.5px;margin-bottom:8px">Built into the inverter's firmware. Waits for read requests from P4 and replies with power data from its registers.</p>
+    <div class="chips">
+      <div class="chip" data-detail="chip-reg4017">Register 4017<small>voltage, current, power</small></div>
+      <div class="chip" data-detail="chip-reg4036">Register 4036<small>battery SOC, charge state</small></div>
+    </div>
+  </div>
+
+  <!-- UART driver bridge ← Inverter -->
+  <div class="conn-bridge conn-driver">
+    <div class="conn-label">UART driver</div>
+    <div class="conn-sublabel">controls<br>serial bus</div>
+    <div class="conn-arrows"><span class="arrow-l">←</span><span class="line"></span><span class="arrow-r">→</span></div>
+  </div>
+
+  <div class="side-cell mid-theme">
+    <div class="layer-name">esp-hosted slave</div>
+    <p class="layer-desc" style="font-size:10.5px;margin-bottom:0">Receives WiFi commands from P4 via SDIO and executes them using the C6's radio.</p>
+  </div>
+
+  <!-- SDIO driver bridge ← C6 -->
+  <div class="conn-bridge conn-driver">
+    <div class="conn-label">SDIO driver</div>
+    <div class="conn-sublabel">controls<br>the bus</div>
+    <div class="conn-arrows"><span class="arrow-l">←</span><span class="line"></span><span class="arrow-r">→</span></div>
+  </div>
+
+  <div class="cell cell-p4-mid mid-theme" data-detail="layer3b">
+    <div class="layer-name">Layer 3b — Middleware &amp; Drivers</div>
+    <p class="layer-desc">Software libraries (pure code) and hardware drivers (control pins and buses).</p>
+    <div class="sub-group-label">Software Libraries</div>
+    <div class="chips">
+      <div class="chip" data-detail="chip-lvgl">LVGL engine<small>draws everything on screen</small></div>
+      <div class="chip" data-detail="chip-esp-hosted">esp-hosted host<small>sends WiFi commands via SDIO driver</small></div>
+      <div class="chip" data-detail="chip-lwip">LWIP + mbedTLS<small>internet packets + HTTPS encryption</small></div>
+    </div>
+    <div class="sub-group-label">Hardware Drivers</div>
+    <div class="chips">
+      <div class="chip drv-chip" data-detail="chip-uart">UART / RS485<small>talks to the inverter cable</small></div>
+      <div class="chip drv-chip" data-detail="chip-sdio">SDIO driver<small>controls the bus to C6</small></div>
+      <div class="chip drv-chip" data-detail="chip-dsi">DSI display driver<small>sends pixels to the panel</small></div>
+      <div class="chip drv-chip" data-detail="chip-gt911-drv">GT911 I2C driver<small>reads touch coordinates</small></div>
+    </div>
+  </div>
+
+  <!-- DSI + I2C driver bridge → Display -->
+  <div class="conn-bridge conn-driver">
+    <div class="conn-label">DSI + I2C drivers</div>
+    <div class="conn-sublabel">pixels out,<br>touch in</div>
+    <div class="conn-arrows"><span class="arrow-l">←</span><span class="line"></span><span class="arrow-r">→</span></div>
+  </div>
+
+  <div class="side-empty">no software — hardware only</div>
+
+  <!-- ── LAYER 3a ── -->
+  <div class="side-empty ext">proprietary OS</div>
+  <div class="conn-empty"></div>
+  <div class="side-cell os-theme">
+    <div class="layer-name">FreeRTOS</div>
+    <p class="layer-desc" style="font-size:10.5px;margin-bottom:0">C6's own OS, runs the esp-hosted slave task.</p>
+  </div>
+  <div class="conn-empty"></div>
+  <div class="cell cell-p4-os os-theme" data-detail="layer3a">
+    <div class="layer-name">Layer 3a — Operating System</div>
+    <p class="layer-desc">Everything above runs on top of this. FreeRTOS boots first, then starts all tasks.</p>
+    <div class="chips">
+      <div class="chip" data-detail="chip-freertos">FreeRTOS<small>the OS kernel — schedules all tasks</small></div>
+    </div>
+  </div>
+  <div class="conn-empty"></div>
+  <div class="side-empty">no OS — pure hardware</div>
+
+  <!-- ── LAYER 4 ── -->
+  <div class="side-cell inv-theme">
+    <div class="layer-name">Inverter hardware</div>
+    <p class="layer-desc" style="font-size:10.5px;margin-bottom:8px">A completely independent device. Has its own CPU, display, and firmware. We only read data from it — we don't control it.</p>
+    <div class="chips">
+      <div class="chip">Inverter CPU<small>runs its own firmware</small></div>
+      <div class="chip" data-detail="chip-rs485-transceiver">RS485 transceiver<small>hardware interface chip on inverter side</small></div>
+    </div>
+  </div>
+
+  <!-- RS485 cable ← Inverter -->
+  <div class="conn-bridge conn-physical">
+    <div class="conn-label">RS485 cable</div>
+    <div class="conn-sublabel">physical<br>wire</div>
+    <div class="conn-arrows"><span class="arrow-l">←</span><span class="line"></span><span class="arrow-r">→</span></div>
+  </div>
+
+  <div class="side-cell hw-theme">
+    <div class="layer-name">ESP32-C6</div>
+    <p class="layer-desc" style="font-size:10.5px;margin-bottom:6px">Dedicated WiFi 6 + BLE chip. Just handles wireless.</p>
+    <div class="chips">
+      <div class="chip" data-detail="chip-c6">WiFi 6 radio<small>antenna + radio</small></div>
+    </div>
+  </div>
+
+  <!-- SDIO bus ← C6 -->
+  <div class="conn-bridge conn-physical">
+    <div class="conn-label">SDIO bus</div>
+    <div class="conn-sublabel">physical<br>copper wires</div>
+    <div class="conn-arrows"><span class="arrow-l">←</span><span class="line"></span><span class="arrow-r">→</span></div>
+  </div>
+
+  <div class="cell cell-p4-hw hw-theme" data-detail="layer4">
+    <div class="layer-name">Layer 4 — Physical hardware</div>
+    <p class="layer-desc">The actual chips on the board. All software above becomes electricity here.</p>
+    <div class="chips">
+      <div class="chip" data-detail="chip-esp32p4">ESP32-P4<small>main CPU, 360 MHz</small></div>
+      <div class="chip" data-detail="chip-rs485-transceiver">RS485 transceiver<small>our side of the inverter cable</small></div>
+    </div>
+  </div>
+
+  <!-- DSI + I2C cable → Display -->
+  <div class="conn-bridge conn-physical">
+    <div class="conn-label">DSI + I2C cable</div>
+    <div class="conn-sublabel">physical<small> </small>wires</div>
+    <div class="conn-arrows"><span class="arrow-l">←</span><span class="line"></span><span class="arrow-r">→</span></div>
+  </div>
+
+  <div class="side-cell hw-theme">
+    <div class="layer-name">Display + Touch</div>
+    <p class="layer-desc" style="font-size:10.5px;margin-bottom:6px">Pure hardware. No software at all.</p>
+    <div class="chips">
+      <div class="chip" data-detail="chip-jd9365">JD9365 chip<small>DSI → pixel voltages</small></div>
+      <div class="chip" data-detail="chip-lcd">LCD glass<small>800×800 pixels</small></div>
+      <div class="chip" data-detail="chip-gt911-hw">GT911 chip<small>capacitive touch sensor</small></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── FLOWS ── -->
+<p class="section-label">How data travels</p>
+
+<div class="flow-card">
+  <div class="flow-title">Inverter power reading → battery arc on screen</div>
+  <div class="flow-row">
+    <span class="fn fn-inv">Inverter<small>external</small></span>
+    <span class="fa">→</span>
+    <span class="fn fn-hw">RS485 cable</span>
+    <span class="fa">→</span>
+    <span class="fn fn-drv" data-detail="chip-uart">UART driver<small>layer 3b</small></span>
+    <span class="fa">→</span>
+    <span class="fn fn-svc" data-detail="chip-modbus-svc">modbus_inverter.c<small>layer 2</small></span>
+    <span class="fa">→</span>
+    <span class="fn fn-app" data-detail="chip-home-screen">Battery arc<small>layer 1</small></span>
+    <span class="fa">→</span>
+    <span class="fn fn-drv" data-detail="chip-dsi">DSI driver<small>layer 3b</small></span>
+    <span class="fa">→</span>
+    <span class="fn fn-hw">Display panel</span>
+  </div>
+  <p class="flow-note">No WiFi, no C6. Data comes in from the inverter column, travels up through P4, exits to the display column.</p>
+</div>
+
+<div class="flow-card">
+  <div class="flow-title">Weather API → temperature on screen</div>
+  <div class="flow-row">
+    <span class="fn fn-inv">open-meteo.com</span>
+    <span class="fa">→</span>
+    <span class="fn fn-hw" data-detail="chip-c6">C6 WiFi radio</span>
+    <span class="fa">→</span>
+    <span class="fn fn-hw">SDIO bus</span>
+    <span class="fa">→</span>
+    <span class="fn fn-drv" data-detail="chip-sdio">SDIO driver<small>layer 3b</small></span>
+    <span class="fa">→</span>
+    <span class="fn fn-mid" data-detail="chip-lwip">LWIP + mbedTLS<small>layer 3b</small></span>
+    <span class="fa">→</span>
+    <span class="fn fn-svc" data-detail="chip-weather-svc">weather_service.c<small>layer 2</small></span>
+    <span class="fa">→</span>
+    <span class="fn fn-app" data-detail="fn-lv_label_set_text">Temp label<small>layer 1</small></span>
+    <span class="fa">→</span>
+    <span class="fn fn-hw">Display panel</span>
+  </div>
+  <p class="flow-note">Enters through C6 column, crosses SDIO bridge into P4, travels up to app layer, exits to display.</p>
+</div>
+
+<div class="flow-card">
+  <div class="flow-title">Finger tap → screen navigation</div>
+  <div class="flow-row">
+    <span class="fn fn-hw">Finger on glass</span>
+    <span class="fa">→</span>
+    <span class="fn fn-hw" data-detail="chip-gt911-hw">GT911 chip</span>
+    <span class="fa">→</span>
+    <span class="fn fn-hw">I2C cable</span>
+    <span class="fa">→</span>
+    <span class="fn fn-drv" data-detail="chip-gt911-drv">GT911 I2C driver<small>layer 3b</small></span>
+    <span class="fa">→</span>
+    <span class="fn fn-app">Touch navigation<small>layer 1</small></span>
+    <span class="fa">→</span>
+    <span class="fn fn-app">Screen changes<small>layer 1</small></span>
+  </div>
+  <p class="flow-note">Enters from the display column (touch chip), crosses I2C bridge into P4, handled entirely in app layer.</p>
+</div>
+
+<!-- ── CODE MAP ── -->
+<p class="section-label">Code Map — which file calls which layer</p>
+<div class="cm-grid">
+
+  <!-- wifi_manager.c -->
+  <div class="cm-card">
+    <div class="cm-header">
+      <span class="cm-file">wifi_manager.c</span>
+      <span class="cm-badge svc">Layer 2</span>
+    </div>
+    <div class="cm-body">
+      <p class="cm-desc">Manages the WiFi connection to the router and syncs the clock via NTP. Other services call <code style="font-size:11px">wifi_manager_connected()</code> to check if internet is available before making requests.</p>
+      <div class="cm-group gl-3b">
+        <span class="cm-group-label">→ Layer 3b — WiFi HAL (talks to C6 via esp-hosted)</span>
+        <div class="cm-fns">
+          <span class="cm-fn" data-detail="fn-esp_wifi_init">esp_wifi_init()</span>
+          <span class="cm-fn" data-detail="fn-esp_wifi_connect">esp_wifi_connect()</span>
+          <span class="cm-fn">esp_wifi_start()</span>
+          <span class="cm-fn">esp_wifi_set_config()</span>
+          <span class="cm-fn" data-detail="fn-esp_sntp_init">esp_sntp_init()</span>
+        </div>
+      </div>
+      <div class="cm-group gl-3a" style="margin-top:10px">
+        <span class="cm-group-label">→ Layer 3a — FreeRTOS</span>
+        <div class="cm-fns">
+          <span class="cm-fn">xEventGroupCreate()</span>
+          <span class="cm-fn" data-detail="fn-xEventGroupWaitBits">xEventGroupWaitBits()</span>
+          <span class="cm-fn">xEventGroupSetBits()</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- weather_service.c -->
+  <div class="cm-card">
+    <div class="cm-header">
+      <span class="cm-file">weather_service.c</span>
+      <span class="cm-badge svc">Layer 2</span>
+    </div>
+    <div class="cm-body">
+      <p class="cm-desc">Fetches weather and AQI from open-meteo.com every 10 min. Waits for WiFi and NTP to be ready first, then updates the home screen widgets directly.</p>
+      <div class="cm-group gl-3b">
+        <span class="cm-group-label">→ Layer 3b — LWIP + mbedTLS (internet)</span>
+        <div class="cm-fns">
+          <span class="cm-fn">esp_http_client_init()</span>
+          <span class="cm-fn" data-detail="fn-esp_http_client_perform">esp_http_client_perform()</span>
+          <span class="cm-fn" data-detail="fn-cJSON_Parse">cJSON_Parse()</span>
+        </div>
+      </div>
+      <div class="cm-group gl-3a" style="margin-top:10px">
+        <span class="cm-group-label">→ Layer 3a — FreeRTOS</span>
+        <div class="cm-fns">
+          <span class="cm-fn" data-detail="fn-xTaskCreate">xTaskCreate(weather_task)</span>
+          <span class="cm-fn" data-detail="fn-vTaskDelay">vTaskDelay()</span>
+        </div>
+      </div>
+      <div class="cm-group gl-1" style="margin-top:10px">
+        <span class="cm-group-label">→ Layer 1 — updates LVGL widgets directly</span>
+        <div class="cm-fns">
+          <span class="cm-fn" data-detail="fn-lvgl_acquire">lvgl_acquire()</span>
+          <span class="cm-fn" data-detail="fn-lv_label_set_text">lv_label_set_text()</span>
+          <span class="cm-fn" data-detail="fn-lv_arc_set_value">lv_arc_set_value()</span>
+          <span class="cm-fn" data-detail="fn-lvgl_acquire">lvgl_release()</span>
+        </div>
+      </div>
+      <div class="cm-group gl-2" style="margin-top:10px">
+        <span class="cm-group-label">reads from Layer 2 — other services</span>
+        <div class="cm-fns">
+          <span class="cm-fn" data-detail="fn-wifi_manager_connected">wifi_manager_connected()</span>
+          <span class="cm-fn">wifi_manager_time_synced()</span>
+          <span class="cm-fn">fota_active (flag)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- modbus_inverter.c -->
+  <div class="cm-card">
+    <div class="cm-header">
+      <span class="cm-file">modbus_inverter.c</span>
+      <span class="cm-badge svc">Layer 2</span>
+    </div>
+    <div class="cm-body">
+      <p class="cm-desc">Polls the inverter every 3 s via RS485. Builds a Modbus RTU request frame, sends it, reads the response, decodes the registers, and writes the decoded values into the global <code style="font-size:11px">gd</code> struct that the screen reads from.</p>
+      <div class="cm-group gl-drv">
+        <span class="cm-group-label">→ Layer 3b — UART + GPIO hardware drivers</span>
+        <div class="cm-fns">
+          <span class="cm-fn" data-detail="fn-uart_write_bytes">uart_write_bytes()</span>
+          <span class="cm-fn" data-detail="fn-uart_read_bytes">uart_read_bytes()</span>
+          <span class="cm-fn">uart_driver_install()</span>
+          <span class="cm-fn" data-detail="fn-gpio_set_level">gpio_set_level(DE_PIN)</span>
+          <span class="cm-fn">gpio_config()</span>
+        </div>
+      </div>
+      <div class="cm-group gl-3a" style="margin-top:10px">
+        <span class="cm-group-label">→ Layer 3a — FreeRTOS</span>
+        <div class="cm-fns">
+          <span class="cm-fn" data-detail="fn-xTaskCreate">xTaskCreate(modbus_task)</span>
+          <span class="cm-fn" data-detail="fn-vTaskDelay">vTaskDelay()</span>
+        </div>
+      </div>
+      <div class="cm-group gl-1" style="margin-top:10px">
+        <span class="cm-group-label">→ Layer 1 — writes decoded data for the screen</span>
+        <div class="cm-fns">
+          <span class="cm-fn" data-detail="fn-lvgl_acquire">lvgl_acquire()</span>
+          <span class="cm-fn" data-detail="fn-gd-struct">gd.solar_kw = ...</span>
+          <span class="cm-fn" data-detail="fn-gd-struct">gd.batt_v = ...</span>
+          <span class="cm-fn" data-detail="fn-gd-struct">gd.load_kw = ...</span>
+          <span class="cm-fn" data-detail="fn-lvgl_acquire">lvgl_release()</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- fota.c -->
+  <div class="cm-card">
+    <div class="cm-header">
+      <span class="cm-file">fota.c</span>
+      <span class="cm-badge svc">Layer 2</span>
+    </div>
+    <div class="cm-body">
+      <p class="cm-desc">Checks GitHub for a newer firmware version, downloads the binary if one exists, writes it to the inactive flash partition, and reboots. Sets <code style="font-size:11px">fota_active=true</code> so weather_service pauses during the download.</p>
+      <div class="cm-group gl-3b">
+        <span class="cm-group-label">→ Layer 3b — LWIP + mbedTLS (download)</span>
+        <div class="cm-fns">
+          <span class="cm-fn" data-detail="fn-esp_http_client_perform">esp_http_client_perform()</span>
+          <span class="cm-fn">esp_crt_bundle_attach()</span>
+        </div>
+      </div>
+      <div class="cm-group gl-3b" style="margin-top:10px">
+        <span class="cm-group-label">→ Layer 3b — OTA flash ops</span>
+        <div class="cm-fns">
+          <span class="cm-fn" data-detail="fn-esp_ota_begin">esp_ota_begin()</span>
+          <span class="cm-fn" data-detail="fn-esp_ota_write">esp_ota_write()</span>
+          <span class="cm-fn" data-detail="fn-esp_ota_begin">esp_ota_end()</span>
+          <span class="cm-fn" data-detail="fn-esp_ota_set_boot_partition">esp_ota_set_boot_partition()</span>
+        </div>
+      </div>
+      <div class="cm-group gl-3a" style="margin-top:10px">
+        <span class="cm-group-label">→ Layer 3a — FreeRTOS</span>
+        <div class="cm-fns">
+          <span class="cm-fn" data-detail="fn-xTaskCreate">xTaskCreate(fota_task)</span>
+          <span class="cm-fn" data-detail="fn-vTaskDelay">vTaskDelay()</span>
+        </div>
+      </div>
+      <div class="cm-group gl-2" style="margin-top:10px">
+        <span class="cm-group-label">reads from Layer 2 — other services</span>
+        <div class="cm-fns">
+          <span class="cm-fn" data-detail="fn-wifi_manager_connected">wifi_manager_connected()</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const D = {
+
+  /* ── LAYER CELLS ── */
+  layer1: {
+    color: '#27C76A', type: 'Application Layer — Layer 1',
+    title: 'Layer 1 — What you see',
+    body: `<p>This is the only layer the user directly interacts with — it's the UI. The screens you see on the 800×800 round display.</p>
+<p>Layer 1 is built using <strong>LVGL</strong> (a graphics engine). Your code tells LVGL "put a green arc here at 78%, put this temperature number there" — LVGL handles the actual pixel calculation.</p>
+<h4>Files that live here:</h4>
+<ul>
+  <li><code>src/invo/invo_home.c</code> — Home screen: battery arc, solar/load labels, clock, weather row</li>
+  <li><code>src/invo/invo_screens.c</code> — Detail screens for battery, solar, weather + back button navigation</li>
+  <li><code>src/main.c</code> — Entry point, calls <code>invo_screens_init()</code> to boot the UI</li>
+</ul>
+<h4>What Layer 1 does NOT do:</h4>
+<p>It does not fetch data. It reads from the <code>gd</code> (global data) struct that Layer 2 services fill. Strict separation: Layer 2 fills data, Layer 1 displays it.</p>`
+  },
+
+  layer2: {
+    color: '#4A9FDD', type: 'Service Layer — Layer 2',
+    title: 'Layer 2 — Background workers',
+    body: `<p>Four tasks that run forever in the background, each with a single job. They never draw anything — they collect data and write it to the <code>gd</code> struct for Layer 1 to show.</p>
+<h4>The four services:</h4>
+<ul>
+  <li><strong>wifi_manager.c</strong> — manages the WiFi connection and keeps the clock synced via NTP. Everything else depends on this.</li>
+  <li><strong>weather_service.c</strong> — fetches temperature, humidity, AQI from open-meteo.com every 10 minutes.</li>
+  <li><strong>modbus_inverter.c</strong> — polls the inverter every 3 seconds over RS485, decodes the power registers, writes results to <code>gd</code>.</li>
+  <li><strong>fota.c</strong> — checks GitHub for a newer firmware version once, downloads it in 512-byte chunks, reboots.</li>
+</ul>
+<h4>How they coordinate:</h4>
+<p>There's no message bus — just shared global flags. <code>wifi_manager_connected()</code> tells weather and fota if WiFi is live. <code>fota_active</code> tells weather to pause during a download. Simple but effective.</p>`
+  },
+
+  layer3b: {
+    color: '#EFA020', type: 'Middleware & Driver Layer — Layer 3b',
+    title: 'Layer 3b — Middleware & Drivers',
+    body: `<p>This layer has two very different kinds of components. They both sit between your app and the hardware, but in completely different ways.</p>
+<h4>Software Libraries (pure code — never touch a pin):</h4>
+<ul>
+  <li><strong>LVGL engine</strong> — renders graphics into a framebuffer in RAM. The DSI driver then sends that buffer to the screen. LVGL never touches hardware directly.</li>
+  <li><strong>LWIP</strong> — TCP/IP networking stack. Assembles DNS queries, HTTP requests, IP packets. Pure C code.</li>
+  <li><strong>mbedTLS</strong> — handles HTTPS encryption. Wraps requests in TLS before handing to LWIP, unwraps responses coming back.</li>
+  <li><strong>esp-hosted host</strong> — protocol layer that sits on top of the SDIO driver. Translates <code>esp_wifi_connect()</code> calls into SDIO packets the C6 understands.</li>
+</ul>
+<h4>Hardware Drivers (directly control pins and buses):</h4>
+<ul>
+  <li><strong>UART/RS485 driver</strong> — controls GPIO37 (TX), GPIO38 (RX), GPIO22 (direction). Moves bits on the copper wire.</li>
+  <li><strong>SDIO driver</strong> — controls the 4-bit SDIO bus to C6 at 20 MHz.</li>
+  <li><strong>DSI display driver</strong> — sends pixel data over MIPI DSI cable to the JD9365 chip.</li>
+  <li><strong>GT911 I2C driver</strong> — reads touch coordinates from the GT911 chip over I2C.</li>
+</ul>`
+  },
+
+  layer3a: {
+    color: '#EFA020', type: 'Operating System Layer — Layer 3a',
+    title: 'Layer 3a — FreeRTOS (the OS kernel)',
+    body: `<p>FreeRTOS is the first thing that runs when the ESP32-P4 boots — before any of your code. It sets up the task scheduler, then calls your <code>app_main()</code>.</p>
+<h4>What FreeRTOS does for us:</h4>
+<ul>
+  <li><strong>Tasks</strong> — each service (wifi_manager, weather_task, modbus_task, fota_task) is a FreeRTOS task. They appear to run at the same time, but the OS switches between them very fast (every ~1ms).</li>
+  <li><strong>Scheduling by priority</strong> — modbus runs at priority 4 (high), FOTA at priority 2 (low). The OS always runs the highest-priority task that's ready.</li>
+  <li><strong>Sleeping</strong> — <code>vTaskDelay()</code> puts a task to sleep with zero CPU usage. Other tasks run during that time.</li>
+  <li><strong>Synchronization</strong> — event groups let wifi_manager signal "WiFi connected!" to tasks waiting for it.</li>
+</ul>
+<h4>The key analogy:</h4>
+<p>FreeRTOS is like an office manager. There are 4 employees (tasks). The manager decides who works at any given moment, stops someone when more important work arrives, and lets people take breaks (<code>vTaskDelay</code>) without blocking the whole office.</p>`
+  },
+
+  layer4: {
+    color: '#9966DD', type: 'Physical Hardware Layer — Layer 4',
+    title: 'Layer 4 — Physical hardware',
+    body: `<p>The actual silicon chips on the board. All software above is ultimately electrons moving through these chips.</p>
+<h4>Chips on this board:</h4>
+<ul>
+  <li><strong>ESP32-P4</strong> — dual-core Xtensa LX7 at 360 MHz, 32 MB PSRAM. This is where all your code runs.</li>
+  <li><strong>RS485 transceiver</strong> — converts the P4's UART signal (0V/3.3V logic) into RS485 differential signal (±5V across two wires). Needed because RS485 works over long cables in electrically noisy environments.</li>
+</ul>
+<h4>What "Layer 4" means:</h4>
+<p>Nothing above can exist without the hardware. But the hardware is dumb — it just moves electrons according to the signals it receives. All intelligence comes from the layers above.</p>`
+  },
+
+  /* ── ARCHITECTURE CHIPS ── */
+  'chip-home-screen': {
+    color: '#27C76A', type: 'Application Screen · Layer 1',
+    title: 'Home Screen',
+    body: `<p>The main screen that appears on boot. File: <code>src/invo/invo_home.c</code></p>
+<h4>What's on it:</h4>
+<ul>
+  <li><strong>Battery arc</strong> — circular arc showing battery state of charge. Reads <code>gd.batt_pct</code> (filled by modbus_inverter.c)</li>
+  <li><strong>Solar power</strong> — current generation in kW. Reads <code>gd.solar_kw</code></li>
+  <li><strong>Load power</strong> — household consumption in kW. Reads <code>gd.load_kw</code></li>
+  <li><strong>Clock</strong> — current time, kept accurate by NTP via wifi_manager.c</li>
+  <li><strong>Weather row</strong> — temperature, humidity, AQI. Filled by weather_service.c</li>
+</ul>
+<h4>Navigation:</h4>
+<p>Tapping the battery arc → Battery detail. Tapping solar → Solar detail. Tapping the weather row → Weather detail. Each navigates to a dedicated screen with more data.</p>`
+  },
+
+  'chip-detail-screens': {
+    color: '#27C76A', type: 'Application Screens · Layer 1',
+    title: 'Detail Screens',
+    body: `<p>Three full-screen detail views, all built in <code>src/invo/invo_screens.c</code>. Each is navigated to by tapping the corresponding section on the home screen.</p>
+<h4>Battery detail:</h4>
+<p>Shows battery voltage, current, SOC %, charge state (charging/discharging/idle). Data from modbus registers 4036+.</p>
+<h4>Solar detail:</h4>
+<p>Shows current solar generation, battery charge current, and comparison data. All from the Modbus inverter registers.</p>
+<h4>Weather detail:</h4>
+<p>Shows 7-day forecast tiles, AQI breakdown with PM2.5/PM10, humidity, wind speed, and "feels like" temperature. All fetched from open-meteo.com by weather_service.c.</p>
+<h4>Back button:</h4>
+<p>A button positioned inside the round screen boundary returns to the home screen. This is currently the active blocker item in CLAUDE.md — the position needs to be at <code>LV_ALIGN_BOTTOM_MID, -200, -90</code> to stay inside the circle.</p>`
+  },
+
+  'chip-wifi-manager': {
+    color: '#4A9FDD', type: 'Background Service · Layer 2',
+    title: 'WiFi Manager',
+    body: `<p>File: <code>esp32/main/wifi_manager.c</code></p>
+<p>Manages the WiFi station connection and NTP clock sync. Everything else (weather, FOTA) checks <code>wifi_manager_connected()</code> before making any internet request.</p>
+<h4>How connection events work:</h4>
+<p>Uses the ESP-IDF WiFi event loop. When WiFi connects and gets an IP, a system event fires → the handler sets an event group bit → tasks waiting on <code>xEventGroupWaitBits()</code> unblock and continue. No polling needed.</p>
+<h4>NTP clock sync:</h4>
+<p>After WiFi connects, calls <code>esp_sntp_init()</code> pointing at <code>pool.ntp.org</code>. When the sync completes (~5-10 sec), a callback fires and sets <code>time_synced = true</code>. weather_service waits for this before fetching — without it, the 7-day forecast day labels would show year 2000 dates.</p>
+<h4>SDIO blip handling:</h4>
+<p>The C6/SDIO connection sometimes has brief transport failures. wifi_manager deliberately does <em>not</em> clear the connected state on these — the connection usually recovers on its own within seconds, and resetting would kill in-flight HTTP requests.</p>`
+  },
+
+  'chip-weather-svc': {
+    color: '#4A9FDD', type: 'Background Service · Layer 2',
+    title: 'Weather Service',
+    body: `<p>File: <code>esp32/main/weather_service.c</code></p>
+<p>Fetches temperature, humidity, wind, 7-day forecast, and AQI from open-meteo.com every 10 minutes, then updates the LVGL screen widgets directly.</p>
+<h4>Two separate API calls:</h4>
+<ul>
+  <li><strong>Weather fetch</strong> — <code>api.open-meteo.com</code> for temperature, humidity, wind, weather code, 7-day forecast</li>
+  <li><strong>AQI fetch</strong> — <code>air-quality-api.open-meteo.com</code> for PM2.5, PM10, US AQI index</li>
+</ul>
+<p>There's a 15-second gap between these two calls to let the SDIO bus drain before opening a new TLS session to a different hostname.</p>
+<h4>The unusual pattern — Layer 2 calling Layer 1 directly:</h4>
+<p>After fetching, weather_service calls <code>lvgl_acquire()</code> and then LVGL functions like <code>lv_label_set_text()</code> to update the screen. Most architectures would pass data up and let Layer 1 redraw independently — here Layer 2 reaches up directly, which is simpler for a single-developer embedded project.</p>`
+  },
+
+  'chip-modbus-svc': {
+    color: '#4A9FDD', type: 'Background Service · Layer 2',
+    title: 'Modbus Inverter Service',
+    body: `<p>File: <code>esp32/main/modbus_inverter.c</code></p>
+<p>Polls the inverter every 3 seconds over RS485 and decodes the live power data.</p>
+<h4>Modbus RTU protocol:</h4>
+<p>A simple request/response protocol designed for industrial devices. The P4 sends an 8-byte "read registers" request: device address (1), function code 0x03 (1), register start (2), count (2), CRC16 (2). The inverter replies with the register values.</p>
+<h4>Register blocks read:</h4>
+<ul>
+  <li><strong>Starting at 4017</strong> — battery voltage, current, solar power, grid voltage, grid power</li>
+  <li><strong>Starting at 4036</strong> — battery SOC %, charge state, output data</li>
+</ul>
+<h4>After decoding:</h4>
+<p>Values are written into the global <code>gd</code> struct: <code>gd.solar_kw</code>, <code>gd.load_kw</code>, <code>gd.batt_v</code>, <code>gd.batt_pct</code> etc. The home screen reads these to update the battery arc and power labels.</p>`
+  },
+
+  'chip-fota': {
+    color: '#4A9FDD', type: 'Background Service · Layer 2',
+    title: 'FOTA — Firmware Over The Air',
+    body: `<p>File: <code>esp32/main/fota.c</code></p>
+<p>Automatically updates the ESP32 firmware from GitHub when a new release is tagged.</p>
+<h4>Step by step:</h4>
+<ol>
+  <li>Fetch <code>version.json</code> from GitHub raw CDN (~100 bytes, just a version string)</li>
+  <li>Compare remote version to the currently running version</li>
+  <li>If same or older → stop. Nothing to do.</li>
+  <li>If newer → download the full .bin firmware binary (~1-2 MB)</li>
+  <li>Write it in 512-byte chunks to the <em>inactive</em> OTA flash partition</li>
+  <li>Call <code>esp_ota_set_boot_partition()</code> to mark it as the next boot target</li>
+  <li><code>esp_restart()</code> — reboots into the new firmware</li>
+</ol>
+<h4>SDIO coordination:</h4>
+<p>Sets <code>fota_active = true</code> at the start so weather_service pauses. A full binary download over HTTPS would overwhelm the SDIO bus if weather is also fetching simultaneously.</p>`
+  },
+
+  'chip-lvgl': {
+    color: '#27C76A', type: 'Software Library · Layer 3b',
+    title: 'LVGL — Light and Versatile Graphics Library',
+    body: `<p>LVGL is the engine that draws everything on the screen. You call functions like <code>lv_arc_create()</code> or <code>lv_label_set_text()</code> and LVGL handles which pixels to light up.</p>
+<h4>How it works:</h4>
+<p>LVGL renders into a framebuffer (a chunk of RAM that represents every pixel). A separate DSI driver task continuously reads that buffer and sends it to the JD9365 chip via MIPI DSI. LVGL never touches the hardware directly — it just fills memory.</p>
+<h4>The LVGL mutex:</h4>
+<p>LVGL is not thread-safe. If weather_service and modbus_task both called LVGL simultaneously, the display would corrupt. That's why every service calls <code>lvgl_acquire()</code> before touching any widget, and <code>lvgl_release()</code> after. Only one task can use LVGL at a time.</p>
+<h4>Used in:</h4>
+<p><code>src/invo/invo_home.c</code> (creates screens), <code>weather_service.c</code> (updates widget text after each fetch), <code>modbus_inverter.c</code> (updates gd struct while holding the LVGL lock).</p>`
+  },
+
+  'chip-esp-hosted': {
+    color: '#EFA020', type: 'Software Library · Layer 3b',
+    title: 'esp-hosted-mcu — WiFi over SDIO',
+    body: `<p>The protocol that makes the C6 chip look like a normal built-in WiFi card from the P4's perspective. Without it, you'd have to manually format SDIO packets and handle the C6's raw command set.</p>
+<h4>What it does:</h4>
+<p>Intercepts standard ESP-IDF WiFi API calls like <code>esp_wifi_connect()</code> that would normally go to an onboard radio, and instead translates them into SDIO packets the C6 understands. The C6 runs the matching "slave" side of the protocol.</p>
+<h4>The complete call chain:</h4>
+<ul>
+  <li>Your code: <code>esp_wifi_connect()</code></li>
+  <li>esp-hosted host (Layer 3b lib) — intercepts, packages the command</li>
+  <li>SDIO driver (Layer 3b drv) — sends the packet over the physical bus</li>
+  <li>C6 executes it using its radio hardware</li>
+  <li>Response travels back up the same chain</li>
+</ul>
+<p>Version on this project: <strong>esp-hosted-mcu v2.12.9</strong></p>`
+  },
+
+  'chip-lwip': {
+    color: '#EFA020', type: 'Software Library · Layer 3b',
+    title: 'LWIP + mbedTLS — Internet Networking Stack',
+    body: `<p>Two libraries that work together every time weather_service.c or fota.c makes an HTTP(S) request.</p>
+<h4>LWIP — LightWeight IP:</h4>
+<p>A full TCP/IP networking stack in pure C. When you call <code>esp_http_client_perform()</code>, LWIP is assembling DNS queries, TCP SYN/ACK handshakes, HTTP GET headers, and managing the response buffer. It handles all internet plumbing — no hardware involved.</p>
+<h4>mbedTLS — mbed Transport Layer Security:</h4>
+<p>Handles HTTPS encryption. For HTTP URLs (open-meteo weather), mbedTLS is bypassed. For HTTPS URLs (GitHub for FOTA), mbedTLS does the TLS handshake, encrypts your request, and decrypts the response. <code>esp_crt_bundle_attach()</code> provides the root CA certificates so the P4 can verify it's actually talking to GitHub and not an impostor.</p>
+<h4>The chain for a FOTA download:</h4>
+<p><code>esp_http_client_perform()</code> → LWIP builds packets → SDIO driver sends to C6 → C6 radio transmits → GitHub responds → C6 radio receives → SDIO brings it to P4 → mbedTLS decrypts → your OTA callback gets the data.</p>`
+  },
+
+  'chip-uart': {
+    color: '#DD4E8E', type: 'Hardware Driver · Layer 3b',
+    title: 'UART / RS485 Driver',
+    body: `<p>The hardware driver that lets the P4 communicate with the inverter over a physical cable.</p>
+<h4>The three pins used:</h4>
+<ul>
+  <li><strong>GPIO37</strong> — TX (transmit): sends bytes from P4 to inverter</li>
+  <li><strong>GPIO38</strong> — RX (receive): receives bytes from inverter to P4</li>
+  <li><strong>GPIO22</strong> — DE/RE (direction enable): controls which way the RS485 transceiver is facing. HIGH = transmit mode, LOW = receive mode.</li>
+</ul>
+<h4>Why RS485 needs a direction pin:</h4>
+<p>RS485 is half-duplex — the same two wires carry both send and receive, but not at the same time. The direction pin tells the transceiver chip which mode to be in. <code>gpio_set_level(MB_UART_DE, 1)</code> before sending, <code>gpio_set_level(MB_UART_DE, 0)</code> after sending to listen for the reply.</p>
+<h4>Settings:</h4>
+<p>UART_NUM_1, 9600 baud, 8N1 (8 data bits, no parity, 1 stop bit). These match the inverter's factory default communication settings.</p>`
+  },
+
+  'chip-sdio': {
+    color: '#DD4E8E', type: 'Hardware Driver · Layer 3b',
+    title: 'SDIO Driver',
+    body: `<p>The hardware driver that controls the physical SDIO bus connecting the P4 to the C6 WiFi chip.</p>
+<h4>What SDIO is:</h4>
+<p>The same protocol used by SD cards, repurposed for chip-to-chip communication. Uses 4 data lines running in parallel at 20 MHz, giving ~10 MB/s bandwidth — more than enough for WiFi data.</p>
+<h4>Why it's fragile:</h4>
+<p>The SDIO bus can get overwhelmed when too much data moves at once. If the P4 is downloading a FOTA binary while also receiving weather data, packets drop and the WiFi appears to disconnect. That's the reason for all the timing precautions in the code:</p>
+<ul>
+  <li>15-second gap between weather and AQI fetches</li>
+  <li><code>fota_active</code> flag that pauses weather during FOTA download</li>
+  <li>50ms sleep between each 512-byte OTA chunk write</li>
+</ul>
+<h4>In your code:</h4>
+<p>You never call SDIO functions directly. The SDIO driver is used internally by esp-hosted host — every WiFi call routes through it.</p>`
+  },
+
+  'chip-dsi': {
+    color: '#DD4E8E', type: 'Hardware Driver · Layer 3b',
+    title: 'DSI Display Driver',
+    body: `<p>The driver that sends pixel data from the P4 to the JD9365 display IC over the MIPI DSI cable.</p>
+<h4>DSI — Display Serial Interface:</h4>
+<p>A high-speed, one-directional standard (MIPI alliance). Designed for one purpose: moving large amounts of pixel data very fast. An 800×800 display at 30fps means 800 × 800 × 3 bytes × 30 = ~57 MB/s of pixel data — MIPI DSI handles this comfortably.</p>
+<h4>How it connects:</h4>
+<p>P4 → DSI cable → JD9365 chip (display driver IC) → LCD glass. The P4's DSI peripheral handles all the timing and encoding automatically. The driver just needs to know the panel's resolution and refresh settings.</p>
+<h4>LVGL's role:</h4>
+<p>LVGL renders into a framebuffer in RAM. The DSI driver reads that framebuffer and transmits it to the display. They're separate layers: LVGL draws, DSI transmits. LVGL never touches a hardware pin.</p>`
+  },
+
+  'chip-gt911-drv': {
+    color: '#DD4E8E', type: 'Hardware Driver · Layer 3b',
+    title: 'GT911 I2C Driver',
+    body: `<p>The driver that reads touch coordinates from the GT911 capacitive touch chip via I2C.</p>
+<h4>I2C — Inter-Integrated Circuit:</h4>
+<p>A two-wire bus (SDA = data, SCL = clock). Slow (400 kHz max), but touch events only happen ~60 times per second — speed doesn't matter. The important thing is that I2C is two-way: the P4 asks "any touch events?" and the GT911 replies with coordinates.</p>
+<h4>How it works:</h4>
+<p>The GT911 has an interrupt pin. When you touch the screen, the chip raises an interrupt signal. The P4 then reads the touch coordinates from GT911's internal registers over I2C. LVGL's input driver adapter translates these into LVGL touch events that the navigation code responds to.</p>
+<h4>Why touch needs two-way communication:</h4>
+<p>Unlike the DSI display (one-way: P4 pushes pixels to the screen), touch data must travel from the glass back to the P4. The GT911 chip needs to send "touch at X=350, Y=420" back. One-way communication would not work for this.</p>`
+  },
+
+  'chip-freertos': {
+    color: '#EFA020', type: 'OS Kernel · Layer 3a',
+    title: 'FreeRTOS — Real-Time Operating System',
+    body: `<p>The operating system running on both the ESP32-P4 and ESP32-C6. It boots first, before any of your code, and sets up the task scheduler.</p>
+<h4>What "real-time" means:</h4>
+<p>Tasks get CPU time within a guaranteed deadline. A regular OS (like Linux) can delay a low-priority task for seconds if busy. FreeRTOS won't — that's why it's used in things like car brakes and medical devices.</p>
+<h4>Our task priorities:</h4>
+<ul>
+  <li>Priority 5: LVGL task (highest — UI must stay responsive)</li>
+  <li>Priority 4: modbus_task (inverter data is time-critical)</li>
+  <li>Priority 3: weather_task (10-min intervals, can wait a moment)</li>
+  <li>Priority 2: fota_task (lowest — firmware updates can wait)</li>
+</ul>
+<h4>The key insight:</h4>
+<p>Without FreeRTOS, you'd have one big loop doing everything sequentially. Modbus polling would block weather fetching. With FreeRTOS, each service runs "simultaneously" because the OS switches between them fast enough (every ~1ms) that it feels parallel.</p>`
+  },
+
+  'chip-reg4017': {
+    color: '#20C9A0', type: 'Modbus Register · Inverter',
+    title: 'Modbus Register Block — starting at 4017',
+    body: `<p>The first block of registers the P4 reads from the inverter. A "register" in Modbus is a 16-bit slot of memory inside the inverter's firmware that holds a live measurement.</p>
+<h4>What's in this block:</h4>
+<ul>
+  <li>Battery voltage (V)</li>
+  <li>Battery current (A)</li>
+  <li>Solar power input (W)</li>
+  <li>Grid voltage (V)</li>
+  <li>Grid power (W)</li>
+</ul>
+<h4>How the P4 reads it:</h4>
+<p>Sends a Modbus RTU "read holding registers" request: function code 0x03, start address 4017, count = number of registers to read. The inverter replies with the raw 16-bit values, which modbus_inverter.c decodes into physical units using scale factors from the inverter's manual.</p>`
+  },
+
+  'chip-reg4036': {
+    color: '#20C9A0', type: 'Modbus Register · Inverter',
+    title: 'Modbus Register Block — starting at 4036',
+    body: `<p>The second block of registers the P4 reads, focusing on battery state and output data.</p>
+<h4>What's in this block:</h4>
+<ul>
+  <li>Battery state of charge (%)</li>
+  <li>Battery charge/discharge state (charging, discharging, idle)</li>
+  <li>Output power to house (W)</li>
+  <li>Inverter operating mode</li>
+</ul>
+<h4>How Modbus registers work:</h4>
+<p>Modbus addresses are like array indices into the inverter's live data. The inverter firmware constantly updates these values as it reads its sensors. The P4 sends a read request with start address (4036) and count, and the inverter replies with the current values. The P4 does this every 3 seconds.</p>`
+  },
+
+  'chip-rs485-transceiver': {
+    color: '#9966DD', type: 'Physical Chip · Layer 4',
+    title: 'RS485 Transceiver',
+    body: `<p>A small chip that converts between the P4's UART digital signals (0V / 3.3V) and the RS485 differential signal (voltage difference across two wires).</p>
+<h4>Why RS485 instead of direct UART:</h4>
+<p>The inverter is typically in a different room — cables can be 5-50 meters long. A regular UART signal at 3.3V over a long cable would degrade, pick up electrical noise, and be unreadable. RS485 uses differential signaling which is immune to this.</p>
+<h4>How differential signaling works:</h4>
+<p>Instead of measuring voltage against ground (like normal UART), the RS485 receiver measures the <em>difference</em> between two wires. Any electrical noise hits both wires equally, so it cancels out in the difference. The signal survives over 100-meter cables in noisy environments like inverter rooms full of switching power electronics.</p>
+<h4>We have two:</h4>
+<p>One transceiver is on the P4 board (our side, Layer 4 of the P4 column). The inverter has its own transceiver too (Layer 4 of the inverter column). The RS485 cable connects them.</p>`
+  },
+
+  'chip-esp32p4': {
+    color: '#9966DD', type: 'Physical Chip · Layer 4',
+    title: 'ESP32-P4 — Main Processor',
+    body: `<p>The main chip where all your code runs. Released by Espressif in 2024 as their high-performance MCU with native display support.</p>
+<h4>Key specs:</h4>
+<ul>
+  <li><strong>CPU</strong>: Dual-core Xtensa LX7, up to 360 MHz</li>
+  <li><strong>RAM</strong>: 768 KB internal SRAM + 32 MB external PSRAM</li>
+  <li><strong>Flash</strong>: 16 MB (stores your firmware, OTA partitions)</li>
+  <li><strong>Peripherals</strong>: MIPI DSI, SDIO host, UART ×5, I2C ×3, SPI ×3</li>
+</ul>
+<h4>Why P4 specifically:</h4>
+<p>It has a native MIPI DSI peripheral — essential for driving the high-resolution 800×800 round display at smooth framerates. Earlier ESP32 variants (S3, S2) don't have hardware DSI and can't drive an 800×800 panel fast enough for a smooth 30+ fps UI.</p>`
+  },
+
+  'chip-c6': {
+    color: '#9966DD', type: 'Physical Chip · Layer 4',
+    title: 'ESP32-C6 — WiFi 6 Coprocessor',
+    body: `<p>A dedicated WiFi 6 (802.11ax) + Bluetooth LE chip that handles all wireless communication. The P4 has no WiFi radio of its own — it delegates entirely to the C6.</p>
+<h4>Why a separate chip:</h4>
+<p>The ESP32-P4 was designed as a high-performance MCU focused on display and compute. Separating WiFi to a dedicated chip keeps the P4's high-frequency circuits clean and the WiFi antenna away from display clock noise.</p>
+<h4>Connection to P4:</h4>
+<p>Connected via 4-bit SDIO bus at 20 MHz. The P4 sends WiFi commands packaged as SDIO packets using the esp-hosted protocol. The C6 executes them with its radio and sends results back. You never write any C6 code — it runs Espressif's pre-built esp-hosted slave firmware.</p>`
+  },
+
+  'chip-jd9365': {
+    color: '#9966DD', type: 'Physical Chip · Layer 4',
+    title: 'JD9365 — Display Driver IC',
+    body: `<p>The chip inside the Waveshare display module that sits between the DSI cable and the LCD glass.</p>
+<h4>What it does:</h4>
+<p>Takes the pixel data stream arriving over MIPI DSI and converts it into the precise voltage signals that drive each pixel of the LCD. An LCD pixel is a tiny capacitor — it needs specific voltages to change its liquid crystal orientation and control how much light passes through the colour filter.</p>
+<h4>The full chain:</h4>
+<p>P4 → DSI driver (software) → DSI cable (physical) → JD9365 chip → LCD glass</p>
+<h4>Why it's in Layer 4:</h4>
+<p>JD9365 is pure hardware — there's no "JD9365 driver" running on the P4 that you wrote. The P4's DSI peripheral speaks the MIPI DSI standard, and the JD9365 listens to that standard. They communicate at the electrical level.</p>`
+  },
+
+  'chip-lcd': {
+    color: '#9966DD', type: 'Physical Hardware · Layer 4',
+    title: 'LCD Glass — 800×800 Round Panel',
+    body: `<p>The physical display: an 800×800 pixel round LCD panel, 3.4 inches diagonal, driven by the JD9365 IC.</p>
+<h4>How an LCD pixel works:</h4>
+<p>Each pixel is a tiny cell of liquid crystal sandwiched between glass layers with a colour filter. Apply one voltage → the crystals align one way → polarised light passes through → bright pixel. Apply another voltage → crystals rotate → light blocked → dark pixel. The JD9365 controls these voltages for all 640,000 pixels.</p>
+<h4>The display chain:</h4>
+<p>LVGL (renders in RAM) → DSI driver (transmits) → JD9365 (converts to voltages) → LCD glass (shows pixels)</p>
+<h4>Refresh:</h4>
+<p>LVGL only redraws regions of the screen that have changed (dirty-region rendering), so CPU usage stays low even at 30 fps.</p>`
+  },
+
+  'chip-gt911-hw': {
+    color: '#9966DD', type: 'Physical Chip · Layer 4',
+    title: 'GT911 — Capacitive Touch Chip',
+    body: `<p>The chip that detects where you touched the screen. It sits under the glass, connected to the P4 via I2C.</p>
+<h4>How capacitive touch works:</h4>
+<p>The GT911 drives a grid of electrodes under the glass with tiny electric fields. A finger changes the capacitance at its location (your body absorbs some of the field). The chip scans all electrode intersections, finds the maximum change, and that location is the touch point.</p>
+<h4>Why two-way communication is required:</h4>
+<p>Unlike DSI (one-way: P4 pushes pixels to the display), touch data must travel from the glass back to the P4. The GT911 needs to send "touch at X=350, Y=420" to the P4. It also has an interrupt pin that fires when a touch is detected, so the P4 doesn't have to keep asking — it just waits for the interrupt.</p>
+<h4>Supports multi-touch:</h4>
+<p>The GT911 can track up to 5 simultaneous touch points. Currently the LVGL driver only uses single-touch for navigation.</p>`
+  },
+
+  /* ── CODE MAP FUNCTIONS ── */
+  'fn-esp_wifi_init': {
+    color: '#EFA020', type: 'WiFi HAL · Layer 3b → wifi_manager.c',
+    title: 'esp_wifi_init()',
+    body: `<p>Initializes the entire WiFi subsystem. Must be called before any other WiFi function.</p>
+<p>Under the hood, this sets up the esp-hosted protocol layer, allocates internal memory for the WiFi driver, and prepares the SDIO bus for communication with the C6 chip.</p>
+<h4>In wifi_manager.c:</h4>
+<p>Called once during initialization with a config struct that points to the default FreeRTOS event loop. After this, all WiFi events (connected, disconnected, got IP) are delivered to the registered event handler function.</p>`
+  },
+
+  'fn-esp_wifi_connect': {
+    color: '#EFA020', type: 'WiFi HAL · Layer 3b → wifi_manager.c',
+    title: 'esp_wifi_connect()',
+    body: `<p>Triggers a connection attempt to the configured SSID/password. Non-blocking — it returns immediately and the result arrives later as an event.</p>
+<h4>The full event chain:</h4>
+<ul>
+  <li>P4 calls <code>esp_wifi_connect()</code></li>
+  <li>esp-hosted sends this as a command over SDIO to C6</li>
+  <li>C6 radio starts scanning for the SSID</li>
+  <li>When found and authenticated, C6 sends back a success event</li>
+  <li>DHCP runs, P4 gets an IP address</li>
+  <li>P4's event loop delivers <code>IP_EVENT_STA_GOT_IP</code></li>
+  <li>wifi_manager handler sets the event group bit</li>
+  <li>Tasks waiting on <code>xEventGroupWaitBits()</code> unblock and continue</li>
+</ul>`
+  },
+
+  'fn-esp_sntp_init': {
+    color: '#EFA020', type: 'SNTP Client · Layer 3b → wifi_manager.c',
+    title: 'esp_sntp_init()',
+    body: `<p>Starts the SNTP (Simple Network Time Protocol) client. SNTP is a lightweight version of NTP that syncs the device's clock from an internet time server.</p>
+<h4>What it does:</h4>
+<p>After WiFi connects, wifi_manager calls this to sync the ESP32's internal clock to <code>pool.ntp.org</code>. Once synced, <code>time(NULL)</code> returns the correct current Unix timestamp and <code>localtime_r()</code> gives the correct local time.</p>
+<h4>Why weather_service waits for this:</h4>
+<p>The 7-day forecast needs to know what day "today" is to label the forecast tiles correctly. Without NTP sync, the ESP32's clock starts at January 1, 2000 (the epoch default). weather_service checks <code>wifi_manager_time_synced()</code> before fetching — if NTP hasn't run yet, the day labels would show "Mon Jan 1" for the year 2000.</p>`
+  },
+
+  'fn-xEventGroupWaitBits': {
+    color: '#EFA020', type: 'FreeRTOS · Layer 3a → wifi_manager.c',
+    title: 'xEventGroupWaitBits()',
+    body: `<p>Blocks the current task until one or more event flags (bits) in the event group are set. The task uses <strong>zero CPU</strong> while waiting — FreeRTOS simply doesn't schedule it until the event fires.</p>
+<h4>In wifi_manager.c:</h4>
+<p>An event group is a set of boolean flags. When WiFi connects, the event handler calls <code>xEventGroupSetBits(eg, WIFI_CONNECTED_BIT)</code>. Any other task that called <code>xEventGroupWaitBits(eg, WIFI_CONNECTED_BIT, ...)</code> is suspended — FreeRTOS wakes it the moment the bit is set.</p>
+<h4>Why this is better than polling:</h4>
+<p>A polling approach: <code>while (!connected) vTaskDelay(100);</code> — wakes up every 100ms and checks, burning a little CPU each time. Event groups: the task is completely suspended, consuming no CPU at all, until the precise moment the event fires.</p>`
+  },
+
+  'fn-esp_http_client_perform': {
+    color: '#EFA020', type: 'LWIP + mbedTLS · Layer 3b',
+    title: 'esp_http_client_perform()',
+    body: `<p>Makes a complete HTTP(S) request — opens connection, sends request, reads response — and blocks until the entire thing is done.</p>
+<h4>What happens inside:</h4>
+<ul>
+  <li>DNS lookup via LWIP (resolves hostname like "api.open-meteo.com" to an IP address)</li>
+  <li>TCP connection (3-way handshake: SYN → SYN-ACK → ACK)</li>
+  <li>If HTTPS: TLS handshake via mbedTLS (~1-2 seconds on P4), certificate verification against the CA bundle</li>
+  <li>HTTP GET request sent</li>
+  <li>Response received in chunks and buffered</li>
+  <li>TCP/TLS teardown</li>
+</ul>
+<h4>Used in:</h4>
+<ul>
+  <li><strong>weather_service.c</strong> — fetches JSON from open-meteo.com (HTTP, no TLS needed)</li>
+  <li><strong>fota.c</strong> — fetches version.json and binary from GitHub (HTTPS, needs mbedTLS + certificate verification)</li>
+</ul>`
+  },
+
+  'fn-cJSON_Parse': {
+    color: '#EFA020', type: 'cJSON Library · Layer 3b → weather_service.c',
+    title: 'cJSON_Parse()',
+    body: `<p>Parses a JSON string into a tree of C objects. After this call, you navigate the tree with <code>cJSON_GetObjectItem()</code> to access fields by name.</p>
+<h4>In weather_service.c:</h4>
+<p>The HTTP response from open-meteo.com is a JSON string like <code>{"current": {"temperature_2m": 28.5, "weather_code": 1}}</code>. After parsing:</p>
+<ul>
+  <li><code>cJSON_GetObjectItem(root, "current")</code> → the "current" object</li>
+  <li><code>cJSON_GetObjectItem(current, "temperature_2m")->valuedouble</code> → 28.5</li>
+</ul>
+<h4>Memory note:</h4>
+<p>cJSON allocates heap memory for the tree. You must call <code>cJSON_Delete(root)</code> when done, or you'll leak memory. On an embedded device with 32 MB PSRAM this matters — a leak on a function called every 10 minutes would slowly eat all available memory.</p>`
+  },
+
+  'fn-xTaskCreate': {
+    color: '#EFA020', type: 'FreeRTOS · Layer 3a',
+    title: 'xTaskCreate()',
+    body: `<p>Creates a new FreeRTOS task — a function that runs independently with its own stack and is scheduled by the OS.</p>
+<h4>Parameters breakdown:</h4>
+<ul>
+  <li><strong>Function pointer</strong>: <code>modbus_task</code>, <code>weather_task</code>, <code>fota_task</code> — the function the task runs</li>
+  <li><strong>Name</strong>: a string like "modbus_inv" used for debugging</li>
+  <li><strong>Stack size</strong>: in bytes — weather_task gets 16384, modbus_task gets 4096</li>
+  <li><strong>Argument</strong>: passed to the task function (NULL here — no arg needed)</li>
+  <li><strong>Priority</strong>: 2 = fota (lowest), 3 = weather, 4 = modbus</li>
+</ul>
+<h4>After this call:</h4>
+<p>The task function starts running as an infinite loop (<code>while(1)</code>) with <code>vTaskDelay()</code> calls to yield between cycles. The task never returns — it runs until the device reboots or calls <code>vTaskDelete(NULL)</code>.</p>`
+  },
+
+  'fn-vTaskDelay': {
+    color: '#EFA020', type: 'FreeRTOS · Layer 3a',
+    title: 'vTaskDelay()',
+    body: `<p>Puts the current task to sleep for a specified time. The task uses <strong>zero CPU</strong> while sleeping — FreeRTOS gives that time to other tasks instead.</p>
+<h4>The pattern used:</h4>
+<p><code>vTaskDelay(pdMS_TO_TICKS(3000))</code> — sleeps for 3000 milliseconds. <code>pdMS_TO_TICKS</code> converts milliseconds into FreeRTOS ticks (FreeRTOS runs at 1000 ticks/second by default, so 3000ms = 3000 ticks).</p>
+<h4>Why every task calls it:</h4>
+<p>Without <code>vTaskDelay</code>, a task with a <code>while(1)</code> loop would spin at full speed, consuming 100% CPU and starving every other task. The delay is also functionally necessary: modbus polls every 3 seconds, weather fetches every 10 minutes, FOTA sleeps 50ms between flash chunk writes to yield the SDIO bus.</p>`
+  },
+
+  'fn-lvgl_acquire': {
+    color: '#27C76A', type: 'LVGL Mutex · Layer 1 boundary',
+    title: 'lvgl_acquire() / lvgl_release()',
+    body: `<p>A mutex (mutual exclusion lock) that prevents multiple FreeRTOS tasks from calling LVGL functions simultaneously.</p>
+<h4>Why it's necessary:</h4>
+<p>LVGL is not thread-safe. If weather_service.c is in the middle of calling <code>lv_label_set_text()</code> and FreeRTOS switches to modbus_task which also calls an LVGL function, the internal LVGL state corrupts and the display shows garbage or crashes.</p>
+<h4>The pattern in every service:</h4>
+<ul>
+  <li><code>lvgl_acquire()</code> — take the mutex. If another task holds it, this blocks until it's released.</li>
+  <li>... call LVGL functions safely ...</li>
+  <li><code>lvgl_release()</code> — release the mutex. Any waiting task unblocks.</li>
+</ul>
+<h4>Used in:</h4>
+<p>weather_service.c (around <code>lv_label_set_text()</code> calls), modbus_inverter.c (around <code>gd</code> struct writes), and any other Layer 2 code that touches shared LVGL state.</p>`
+  },
+
+  'fn-lv_label_set_text': {
+    color: '#27C76A', type: 'LVGL Widget API · Layer 1',
+    title: 'lv_label_set_text() / lv_label_set_text_fmt()',
+    body: `<p>Updates the text content of an LVGL label widget. The display redraws the changed area automatically on the next LVGL refresh cycle.</p>
+<h4>In weather_service.c:</h4>
+<p>Called to update temperature (<code>app.w_wx_tmp</code>), weather description (<code>app.w_wx_cond</code>), wind speed, humidity, and AQI values after each fetch. The <code>app</code> struct holds pointers to all the LVGL widget objects — created in Layer 1 screen code, stored globally so services can update them.</p>
+<h4>The _fmt variant:</h4>
+<p><code>lv_label_set_text_fmt(app.w_wx_tmp, "%d°C", gd.wx_c)</code> — works like printf, formats the string and sets it in one call. Used when you need to combine a number with a unit.</p>`
+  },
+
+  'fn-lv_arc_set_value': {
+    color: '#27C76A', type: 'LVGL Widget API · Layer 1',
+    title: 'lv_arc_set_value()',
+    body: `<p>Sets the fill percentage of an LVGL arc widget, used for the battery SOC arc and the AQI arc.</p>
+<h4>In weather_service.c:</h4>
+<p>Sets the AQI arc to <code>gd.aqi</code> (0-300 scale). Also changes the arc's indicator color using <code>lv_obj_set_style_arc_color()</code>: green if AQI ≤ 50 (Good), amber if ≤ 100 (Moderate), red otherwise.</p>
+<h4>In the home screen (Layer 1):</h4>
+<p>The battery arc is set by invo_home.c reading <code>gd.batt_pct</code>. The arc goes from 0 to 100, mapping directly to battery percentage. The green arc you see on the home screen filling around the edge is this widget.</p>`
+  },
+
+  'fn-uart_write_bytes': {
+    color: '#DD4E8E', type: 'UART Hardware Driver · Layer 3b → modbus_inverter.c',
+    title: 'uart_write_bytes()',
+    body: `<p>Sends a buffer of bytes out of the UART TX pin (GPIO37). Blocks until all bytes are physically transmitted.</p>
+<h4>In modbus_inverter.c:</h4>
+<p>Called to send the 8-byte Modbus RTU request frame to the inverter:</p>
+<ul>
+  <li>Byte 1: device address (1 = our inverter)</li>
+  <li>Byte 2: function code (0x03 = read holding registers)</li>
+  <li>Bytes 3-4: register start address (e.g. 4017)</li>
+  <li>Bytes 5-6: number of registers to read</li>
+  <li>Bytes 7-8: CRC16 checksum</li>
+</ul>
+<h4>Before and after:</h4>
+<p><code>gpio_set_level(MB_UART_DE, 1)</code> must be called first to switch the RS485 transceiver to transmit mode. After sending, <code>gpio_set_level(MB_UART_DE, 0)</code> switches back to receive mode so the inverter's response can come in.</p>`
+  },
+
+  'fn-uart_read_bytes': {
+    color: '#DD4E8E', type: 'UART Hardware Driver · Layer 3b → modbus_inverter.c',
+    title: 'uart_read_bytes()',
+    body: `<p>Waits for incoming bytes on the UART RX pin (GPIO38) and copies them into a buffer. Has a timeout so it doesn't wait forever.</p>
+<h4>In modbus_inverter.c:</h4>
+<p>Called after sending the Modbus request. Waits up to 1000ms (<code>pdMS_TO_TICKS(1000)</code>) for the inverter to respond. The inverter typically replies within 50-100ms at 9600 baud.</p>
+<h4>What the response contains:</h4>
+<p>A Modbus RTU reply frame: device address (1 byte), function code (1 byte), byte count (1 byte), register values (2 bytes each), CRC16 (2 bytes). modbus_inverter.c then decodes these raw bytes into physical units — millivolts become volts, milliwatts become kW — and writes the results to the <code>gd</code> struct.</p>`
+  },
+
+  'fn-gpio_set_level': {
+    color: '#DD4E8E', type: 'GPIO Hardware Driver · Layer 3b → modbus_inverter.c',
+    title: 'gpio_set_level(DE_PIN, level)',
+    body: `<p>Sets GPIO pin 22 HIGH or LOW. Used to control the RS485 transceiver direction — whether it's in transmit mode or receive mode.</p>
+<h4>Why RS485 needs a direction pin:</h4>
+<p>RS485 is a half-duplex bus — the same two wires carry both the P4's transmit signal and the inverter's reply signal, but not simultaneously. The transceiver chip has a DE (Driver Enable) pin that controls direction: HIGH = transmit mode (P4 talking), LOW = receive mode (P4 listening).</p>
+<h4>The timing sequence in modbus_inverter.c:</h4>
+<ol>
+  <li><code>gpio_set_level(GPIO_NUM_22, 1)</code> — switch to TX mode</li>
+  <li><code>uart_write_bytes()</code> — send the 8-byte Modbus request</li>
+  <li><code>gpio_set_level(GPIO_NUM_22, 0)</code> — switch back to RX mode</li>
+  <li><code>uart_read_bytes()</code> — wait for inverter's response</li>
+</ol>
+<p>The direction pin must be toggled at the right moment — flip too early and you'll corrupt the last bits of your own transmission.</p>`
+  },
+
+  'fn-wifi_manager_connected': {
+    color: '#4A9FDD', type: 'Layer 2 → Layer 2 cross-service call',
+    title: 'wifi_manager_connected()',
+    body: `<p>A function exported by wifi_manager.c that returns <code>true</code> if WiFi is currently connected and has a valid IP address.</p>
+<h4>Why everything checks this first:</h4>
+<p>Both weather_service.c and fota.c call this before making any HTTP request. If WiFi is down, an HTTP call would either block for the full timeout (10-30 seconds) or fail immediately — either way it's wasted time. Checking first is the defensive pattern.</p>
+<h4>This is a Layer 2 → Layer 2 call:</h4>
+<p>A service (weather, fota) calling another service (wifi_manager) at the same layer. In a strict AUTOSAR architecture this might go through a formal service interface. Here it's a direct C function call — practical for a single-developer embedded project.</p>`
+  },
+
+  'fn-esp_ota_begin': {
+    color: '#EFA020', type: 'OTA Flash Ops · Layer 3b → fota.c',
+    title: 'esp_ota_begin() / esp_ota_end()',
+    body: `<p><code>esp_ota_begin()</code> opens the inactive OTA flash partition for writing. <code>esp_ota_end()</code> finalizes and validates the written binary.</p>
+<h4>OTA flash partitioning:</h4>
+<p>The ESP32 flash has two OTA partitions: <code>ota_0</code> and <code>ota_1</code>. The device boots from whichever one is marked active. FOTA writes new firmware into the <em>other</em> one. Only after a successful write does it switch which partition is active.</p>
+<h4>Why this is safe:</h4>
+<p>If the download fails partway through, the original partition is completely untouched — the device boots normally from it next time. Only after <code>esp_ota_end()</code> succeeds (binary integrity check passes) and <code>esp_ota_set_boot_partition()</code> is called does the device commit to switching.</p>`
+  },
+
+  'fn-esp_ota_write': {
+    color: '#EFA020', type: 'OTA Flash Ops · Layer 3b → fota.c',
+    title: 'esp_ota_write()',
+    body: `<p>Writes a chunk of firmware binary data to the inactive flash partition.</p>
+<h4>In fota.c:</h4>
+<p>Called with 512-byte chunks (<code>OTA_CHUNK_SIZE = 512</code>). After each chunk is written, there's a 50ms delay (<code>vTaskDelay(pdMS_TO_TICKS(50))</code>). This sleep yields the CPU back to FreeRTOS, giving the SDIO bus time to breathe between flash writes — without it, the continuous download + write would overwhelm the bus.</p>
+<h4>How flash writing works:</h4>
+<p>Flash memory can only be written in pages (256 bytes each) and must be erased before writing. <code>esp_ota_begin()</code> erases the whole inactive partition upfront. <code>esp_ota_write()</code> then just streams data in. Writing to un-erased flash would corrupt it.</p>`
+  },
+
+  'fn-esp_ota_set_boot_partition': {
+    color: '#EFA020', type: 'OTA Flash Ops · Layer 3b → fota.c',
+    title: 'esp_ota_set_boot_partition()',
+    body: `<p>Marks a flash partition as the next boot target. After the next reboot, the bootloader loads firmware from this partition.</p>
+<h4>The point of no return:</h4>
+<p>After this call, the next <code>esp_restart()</code> boots into the new firmware. In fota.c, this is called only after <code>esp_ota_end()</code> succeeds — meaning the downloaded binary passed its CRC integrity check.</p>
+<h4>What happens next in fota.c:</h4>
+<p>A 2-second delay is added after this call so LVGL has time to show a "Done! Rebooting..." message to the user. Then <code>esp_restart()</code> cuts the power cycle and the device comes back up running the new firmware version.</p>
+<h4>Rollback protection:</h4>
+<p>If OTA rollback is enabled, the new firmware must call <code>esp_ota_mark_app_valid()</code> within a timeout window after boot, or the bootloader reverts to the previous partition automatically on the next reboot.</p>`
+  },
+
+  'fn-gd-struct': {
+    color: '#27C76A', type: 'Shared Data Struct · Layer 2 → Layer 1',
+    title: 'The gd (global data) struct',
+    body: `<p>The shared data store between Layer 2 services and Layer 1 screens. Layer 2 fills it with live measurements; Layer 1 reads from it to update what the user sees.</p>
+<h4>Key fields written by modbus_inverter.c:</h4>
+<ul>
+  <li><code>gd.solar_kw</code> — solar generation in kW</li>
+  <li><code>gd.load_kw</code> — household consumption in kW</li>
+  <li><code>gd.batt_v</code> — battery voltage (V)</li>
+  <li><code>gd.batt_a</code> — battery current (A)</li>
+  <li><code>gd.batt_pct</code> — battery state of charge (%)</li>
+  <li><code>gd.grid_v</code> — grid voltage (V)</li>
+</ul>
+<h4>Key fields written by weather_service.c:</h4>
+<ul>
+  <li><code>gd.wx_c</code> — temperature (°C)</li>
+  <li><code>gd.aqi</code> — US AQI air quality index</li>
+  <li><code>gd.humidity</code> — relative humidity (%)</li>
+</ul>
+<h4>Thread safety:</h4>
+<p>modbus_inverter.c acquires the LVGL mutex before writing to <code>gd</code>. This prevents the home screen from reading a half-updated struct — e.g. solar_kw updated but batt_pct not yet, giving a momentarily inconsistent display.</p>`
+  }
+
+};
+
+/* ── Modal logic ── */
+function openModal(id) {
+  const d = D[id];
+  if (!d) return;
+  const accent = document.getElementById('modal-accent');
+  const type   = document.getElementById('modal-type');
+  const title  = document.getElementById('modal-title');
+  const body   = document.getElementById('modal-body');
+  const panel  = document.getElementById('modal-panel');
+  accent.style.background = d.color;
+  type.style.color = d.color;
+  type.textContent = d.type;
+  title.textContent = d.title;
+  body.innerHTML = d.body;
+  const modal = document.getElementById('modal');
+  modal.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  panel.style.animation = 'none';
+  void panel.offsetWidth;
+  panel.style.animation = 'modalIn .18s cubic-bezier(.2,.8,.3,1) both';
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+document.getElementById('modal-close').addEventListener('click', closeModal);
+document.getElementById('modal-backdrop').addEventListener('click', closeModal);
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeModal();
+});
+document.addEventListener('click', function(e) {
+  const el = e.target.closest('[data-detail]');
+  if (el) { e.stopPropagation(); openModal(el.dataset.detail); }
+});
+</script>
