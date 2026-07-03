@@ -90,28 +90,17 @@ jobs:
 
       - name: Build with ESP-IDF Docker image
         run: |
-          # First pass: let IDF download managed_components
           docker run --rm \
             -v "${{ github.workspace }}":/workspace \
             -w /workspace/esp32 \
             -e IDF_TARGET=esp32p4 \
             espressif/idf:release-v5.3 \
-            idf.py reconfigure
-
-          # Patch esp-hosted: disable CMD53 block-mode TX (workaround for ESP32-C6 SLC
-          # state machine bug that causes error 258 / "Unrecoverable host sdio state").
-          # See: github.com/espressif/esp-hosted-mcu/issues/167 (root cause #3, saddeviI)
-          sed -i \
-            's/#define H_SDIO_TX_BLOCK_ONLY_XFER (1)/#define H_SDIO_TX_BLOCK_ONLY_XFER (0)/' \
-            esp32/managed_components/espressif__esp_hosted/host/port/esp/freertos/include/port_esp_hosted_host_config.h
-
-          # Second pass: actual build with patched component
-          docker run --rm \
-            -v "${{ github.workspace }}":/workspace \
-            -w /workspace/esp32 \
-            -e IDF_TARGET=esp32p4 \
-            espressif/idf:release-v5.3 \
-            idf.py build
+            bash -c "
+              idf.py reconfigure &&
+              sed -i 's/#define H_SDIO_TX_BLOCK_ONLY_XFER (1)/#define H_SDIO_TX_BLOCK_ONLY_XFER (0)/' \
+                managed_components/espressif__esp_hosted/host/port/esp/freertos/include/port_esp_hosted_host_config.h &&
+              idf.py build
+            "
 
       - name: Upload binary to GitHub Release
         run: |
