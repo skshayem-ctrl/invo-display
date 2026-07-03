@@ -9,9 +9,23 @@ permissions:
   contents: write
 
 jobs:
+  # ── Create the GitHub Release (cloud, instant) ───────────────────────
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub Release
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "INVO ${{ github.ref_name }}" \
+            --generate-notes \
+            --repo "${{ github.repository }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # ── Pi 5 build (self-hosted runner on the Pi) ────────────────────────
   build-pi:
     runs-on: self-hosted
+    needs: create-release
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,20 +74,19 @@ jobs:
           echo "TARBALL=$TARBALL" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-      - name: Create GitHub Release
+      - name: Upload Pi artifacts to release
         run: |
-          gh release create "$VERSION" \
+          gh release upload "$VERSION" \
             "dist/$TARBALL" \
             "dist/manifest.json" \
-            --title "INVO $VERSION" \
-            --generate-notes
+            --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ── ESP32-P4 build (cloud runner, ESP-IDF via Docker) ───────────────
   build-esp32:
     runs-on: ubuntu-latest
-    needs: build-pi          # release must exist before we upload the binary
+    needs: create-release
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -106,10 +119,8 @@ jobs:
         run: |
           TAG="${{ github.ref_name }}"
           BIN="invo-esp32-${TAG}.bin"
-          # Docker runs as root so the file may be root-owned — copy it out
           sudo cp esp32/build/invo-esp32.bin "$BIN"
           gh release upload "$TAG" "$BIN" --clobber
-          # Fixed-name asset — FOTA_BIN_URL uses /releases/latest/download/invo-esp32.bin
           sudo cp esp32/build/invo-esp32.bin invo-esp32.bin
           gh release upload "$TAG" invo-esp32.bin --clobber
         env:
@@ -119,7 +130,6 @@ jobs:
         run: |
           TAG="${{ github.ref_name }}"
           REPO="${{ github.repository }}"
-          # Use a clean temp repo — avoids untracked-file conflicts in main workspace
           BINDIR=$(mktemp -d)
           cd "$BINDIR"
           git init
@@ -163,7 +173,7 @@ jobs:
   # ── Mirror ESP32 binary to Pi local HTTP server (self-hosted runner) ──
   deploy-esp32-mirror:
     runs-on: self-hosted
-    needs: build-esp32      # binary must be uploaded to GitHub Release first
+    needs: build-esp32
     steps:
       - name: Download ESP32 binary to local FOTA directory
         run: |
