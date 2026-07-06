@@ -38,15 +38,18 @@
 #define REG_B2_COUNT  8       /* 4036-4043 */
 #define REG_OUT_CTRL  4049
 #define REG_CHG_CTRL  4054
+#define REG_CHG_VOLT  4056   /* Battery charge voltage setpoint ×0.1V */
 
 
 static volatile bool s_valid         = false;
 static volatile int  s_pending_cmd   = -1;
 static volatile int  s_pending_chg_w = -1;
+static volatile int  s_pending_chg_v = -1;
 
-bool modbus_inverter_valid(void)              { return s_valid; }
-void modbus_inverter_request_output(int on)   { s_pending_cmd = on; }
-void modbus_inverter_request_chg_w(int watts) { s_pending_chg_w = watts; }
+bool modbus_inverter_valid(void)                    { return s_valid; }
+void modbus_inverter_request_output(int on)         { s_pending_cmd = on; }
+void modbus_inverter_request_chg_w(int watts)       { s_pending_chg_w = watts; }
+void modbus_inverter_request_chg_v(int tenths_v)    { s_pending_chg_v = tenths_v; }
 
 /* ── CRC16 ───────────────────────────────────────────────────────────── */
 
@@ -170,6 +173,14 @@ static void modbus_task(void *arg)
             s_pending_chg_w = -1;
             mb_write_reg(REG_CHG_CTRL, (uint16_t)chg);
             ESP_LOGI(TAG, "Charge W set → %d W", chg);
+        }
+
+        /* Pending charge voltage setpoint */
+        int chgv = s_pending_chg_v;
+        if (chgv >= 0) {
+            s_pending_chg_v = -1;
+            mb_write_reg(REG_CHG_VOLT, (uint16_t)chgv);
+            ESP_LOGI(TAG, "Charge V set → %.1f V", chgv * 0.1f);
         }
 
         /* ── Read two register blocks ─────────────────────────── */
