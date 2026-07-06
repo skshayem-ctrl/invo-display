@@ -7,7 +7,7 @@
 static int s_chg_target = 0;
 static lv_obj_t *s_chg_target_lbl = NULL;
 
-static int s_chgv_target = 0;       /* tenths of a volt, 0 = not set yet */
+static int s_chgv_target = 512;     /* tenths of a volt — default 51.2V (48V LFP nominal) */
 static lv_obj_t *s_chgv_target_lbl = NULL;
 
 static void chg_minus_cb(lv_event_t *e)
@@ -43,7 +43,6 @@ static void chgv_plus_cb(lv_event_t *e)
 
 static void chgv_set_cb(lv_event_t *e)
 {
-    if (s_chgv_target == 0) return;
 #ifdef ESP_PLATFORM
     modbus_inverter_request_chg_v(s_chgv_target);
 #endif
@@ -254,7 +253,7 @@ lv_obj_t *screen_battery_create(void)
     lv_obj_center(lvm);
 
     s_chgv_target_lbl = lv_label_create(vcard);
-    lv_label_set_text(s_chgv_target_lbl, "--");
+    lv_label_set_text_fmt(s_chgv_target_lbl, "%d.%d V", s_chgv_target / 10, s_chgv_target % 10);
     lv_obj_set_style_text_color(s_chgv_target_lbl, C_GREEN, 0);
     lv_obj_set_style_text_font(s_chgv_target_lbl, &lv_font_montserrat_14, 0);
     lv_obj_align(s_chgv_target_lbl, LV_ALIGN_BOTTOM_MID, -16, -6);
