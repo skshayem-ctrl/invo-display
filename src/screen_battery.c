@@ -6,19 +6,21 @@
 
 static int s_chg_target = 0;
 static lv_obj_t *s_chg_target_lbl = NULL;
+static lv_obj_t *s_chg_last_lbl   = NULL;
 
 static int s_chgv_target = 512;     /* tenths of a volt — default 51.2V (48V LFP nominal) */
 static lv_obj_t *s_chgv_target_lbl = NULL;
+static lv_obj_t *s_chgv_last_lbl   = NULL;
 
 static void chg_minus_cb(lv_event_t *e)
 {
-    if (s_chg_target >= 50) s_chg_target -= 50;
+    if (s_chg_target - 50 >= 0) s_chg_target -= 50;
     if (s_chg_target_lbl) lv_label_set_text_fmt(s_chg_target_lbl, "%d W", s_chg_target);
 }
 
 static void chg_plus_cb(lv_event_t *e)
 {
-    if (s_chg_target <= 950) s_chg_target += 50;
+    if (s_chg_target + 50 <= 1000) s_chg_target += 50;
     if (s_chg_target_lbl) lv_label_set_text_fmt(s_chg_target_lbl, "%d W", s_chg_target);
 }
 
@@ -27,17 +29,18 @@ static void chg_set_cb(lv_event_t *e)
 #ifdef ESP_PLATFORM
     modbus_inverter_request_chg_w(s_chg_target);
 #endif
+    if (s_chg_last_lbl) lv_label_set_text_fmt(s_chg_last_lbl, "Last: %d W", s_chg_target);
 }
 
 static void chgv_minus_cb(lv_event_t *e)
 {
-    if (s_chgv_target >= 462) s_chgv_target -= 50;  /* step 5V */
+    if (s_chgv_target - 2 >= 462) s_chgv_target -= 2;   /* min 46.2V */
     if (s_chgv_target_lbl) lv_label_set_text_fmt(s_chgv_target_lbl, "%d.%d V", s_chgv_target / 10, s_chgv_target % 10);
 }
 
 static void chgv_plus_cb(lv_event_t *e)
 {
-    if (s_chgv_target <= 582) s_chgv_target += 50;  /* step 5V */
+    if (s_chgv_target + 2 <= 584) s_chgv_target += 2;   /* max 58.4V */
     if (s_chgv_target_lbl) lv_label_set_text_fmt(s_chgv_target_lbl, "%d.%d V", s_chgv_target / 10, s_chgv_target % 10);
 }
 
@@ -46,6 +49,7 @@ static void chgv_set_cb(lv_event_t *e)
 #ifdef ESP_PLATFORM
     modbus_inverter_request_chg_v(s_chgv_target);
 #endif
+    if (s_chgv_last_lbl) lv_label_set_text_fmt(s_chgv_last_lbl, "Last: %d.%d V", s_chgv_target / 10, s_chgv_target % 10);
 }
 
 static void output_on_cb(lv_event_t *e)
@@ -125,7 +129,7 @@ lv_obj_t *screen_battery_create(void)
     app.w_bd_tmp    = make_stat_card(scr, 175, 80,  -8,   20, "Inv Temp",  "--", "Inverter temp", C_ORANGE, C_GRAY);
     app.w_bd_bkp    = make_stat_card(scr, 175, 80, 177,   20, "Backup",    "--", "Est. runtime",  C_BLUE,   C_GRAY);
 
-    /* ── Output ON button — below stat grid, centered on right columns ─ */
+    /* ── Output ON button ───────────────────────────────────────────── */
     lv_obj_t *on_btn = lv_btn_create(scr);
     lv_obj_set_size(on_btn, 85, 55);
     lv_obj_align(on_btn, LV_ALIGN_CENTER, 35, 125);
@@ -157,10 +161,10 @@ lv_obj_t *screen_battery_create(void)
     lv_obj_set_style_text_align(off_lbl, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(off_lbl);
 
-    /* ── Mains Charge card (below SYS STATUS, left side) ──────────────── */
+    /* ── Mains Charge card (185×110, left side) ───────────────────────── */
     lv_obj_t *ccard = lv_obj_create(scr);
-    lv_obj_set_size(ccard, 185, 90);
-    lv_obj_align(ccard, LV_ALIGN_CENTER, -185, 128);
+    lv_obj_set_size(ccard, 185, 110);
+    lv_obj_align(ccard, LV_ALIGN_CENTER, -185, 123);
     lv_obj_set_style_bg_color(ccard, lv_color_hex(0x0a0f1a), 0);
     lv_obj_set_style_border_color(ccard, C_AMBER, 0);
     lv_obj_set_style_border_width(ccard, 1, 0);
@@ -168,7 +172,6 @@ lv_obj_t *screen_battery_create(void)
     lv_obj_set_style_pad_all(ccard, 8, 0);
     lv_obj_clear_flag(ccard, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Row 1: label + live reading */
     lv_obj_t *ctl = lv_label_create(ccard);
     lv_label_set_text(ctl, "MAINS CHARGE");
     lv_obj_set_style_text_color(ctl, C_AMBER, 0);
@@ -181,7 +184,14 @@ lv_obj_t *screen_battery_create(void)
     lv_obj_set_style_text_font(app.w_bd_grid_chg_w, &lv_font_montserrat_14, 0);
     lv_obj_align(app.w_bd_grid_chg_w, LV_ALIGN_TOP_RIGHT, 0, 0);
 
-    /* Row 2: − target + SET */
+    /* Last-set label */
+    s_chg_last_lbl = lv_label_create(ccard);
+    lv_label_set_text(s_chg_last_lbl, "Last: --");
+    lv_obj_set_style_text_color(s_chg_last_lbl, C_GRAY, 0);
+    lv_obj_set_style_text_font(s_chg_last_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_align(s_chg_last_lbl, LV_ALIGN_TOP_MID, 0, 20);
+
+    /* − target + SET row */
     lv_obj_t *btn_m = lv_btn_create(ccard);
     lv_obj_set_size(btn_m, 32, 32);
     lv_obj_align(btn_m, LV_ALIGN_BOTTOM_LEFT, 0, 0);
@@ -224,10 +234,10 @@ lv_obj_t *screen_battery_create(void)
     lv_obj_set_style_text_font(ls, &lv_font_montserrat_12, 0);
     lv_obj_center(ls);
 
-    /* ── Charge Voltage card (below ON/OFF buttons, right side) ──────────── */
+    /* ── Charge Voltage card (185×110, right side) ────────────────────── */
     lv_obj_t *vcard = lv_obj_create(scr);
-    lv_obj_set_size(vcard, 185, 90);
-    lv_obj_align(vcard, LV_ALIGN_CENTER, 85, 215);
+    lv_obj_set_size(vcard, 185, 110);
+    lv_obj_align(vcard, LV_ALIGN_CENTER, 85, 210);
     lv_obj_set_style_bg_color(vcard, lv_color_hex(0x0a0f1a), 0);
     lv_obj_set_style_border_color(vcard, C_GREEN, 0);
     lv_obj_set_style_border_width(vcard, 1, 0);
@@ -241,6 +251,14 @@ lv_obj_t *screen_battery_create(void)
     lv_obj_set_style_text_font(vtitle, &lv_font_montserrat_12, 0);
     lv_obj_align(vtitle, LV_ALIGN_TOP_LEFT, 0, 0);
 
+    /* Last-set label */
+    s_chgv_last_lbl = lv_label_create(vcard);
+    lv_label_set_text(s_chgv_last_lbl, "Last: --");
+    lv_obj_set_style_text_color(s_chgv_last_lbl, C_GRAY, 0);
+    lv_obj_set_style_text_font(s_chgv_last_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_align(s_chgv_last_lbl, LV_ALIGN_TOP_MID, 0, 20);
+
+    /* − target + SET row */
     lv_obj_t *btn_vm = lv_btn_create(vcard);
     lv_obj_set_size(btn_vm, 32, 32);
     lv_obj_align(btn_vm, LV_ALIGN_BOTTOM_LEFT, 0, 0);
