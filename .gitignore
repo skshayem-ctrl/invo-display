@@ -70,3 +70,6 @@ esp32/dependencies.lock
 
 # Explainer HTML files (local reference only, not for production)
 *.html
+
+# Claude Code instructions (local dev tool config, not for production)
+CLAUDE.md
