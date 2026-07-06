@@ -97,7 +97,13 @@ jobs:
           printf '{\n  "version": "%s",\n  "url": "%s"\n}\n' \
             "$VER" "$RAW_URL" > version.json
 
-          git add version.json
+          # Also write esp32/version.json at the OLD path so devices running
+          # firmware built before the Pi/ESP32 split can still receive FOTA
+          # and upgrade to a build that polls the new path.
+          mkdir -p esp32
+          cp version.json esp32/version.json
+
+          git add version.json esp32/version.json
           if git diff --cached --quiet; then
             echo "version.json already up to date, nothing to commit"
           else
