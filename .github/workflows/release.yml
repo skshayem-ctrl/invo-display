@@ -112,19 +112,3 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ── Mirror ESP32 binary to Pi local HTTP server (self-hosted runner) ──
-  deploy-esp32-mirror:
-    runs-on: self-hosted
-    needs: build-esp32
-    steps:
-      - name: Download ESP32 binary to local FOTA directory
-        run: |
-          TAG="${{ github.ref_name }}"
-          VER="${TAG#v}"
-          BIN_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/invo-esp32-${TAG}.bin"
-          mkdir -p /home/intelli/esp32-fota
-          curl -fL --retry 3 "$BIN_URL" -o /home/intelli/esp32-fota/invo-esp32.bin
-          printf '{"version":"%s","url":"http://192.168.77.200:8080/invo-esp32.bin"}\n' \
-            "$VER" > /home/intelli/esp32-fota/version.json
-          echo "Mirrored ESP32 ${TAG} to /home/intelli/esp32-fota/"
