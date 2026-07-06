@@ -1,28 +1,39 @@
 idf_component_register(
     SRCS
         "main.c"
-        "wifi_manager.c"
-        "weather_service.c"
-        "lvgl_port.c"
-        "uart_input.c"
-        "modbus_inverter.c"
-        "fota.c"
-        "${CMAKE_SOURCE_DIR}/src/hal/hal_esp32.c"
-        "${CMAKE_SOURCE_DIR}/src/ui_common.c"
-        "${CMAKE_SOURCE_DIR}/src/screen_main.c"
-        "${CMAKE_SOURCE_DIR}/src/screen_battery.c"
-        "${CMAKE_SOURCE_DIR}/src/screen_solar.c"
-        "${CMAKE_SOURCE_DIR}/src/screen_weather.c"
-        "${CMAKE_SOURCE_DIR}/src/screen_sleep.c"
-        "${CMAKE_SOURCE_DIR}/src/screen_wifi.c"
-        "${CMAKE_SOURCE_DIR}/src/screen_settings.c"
-        "${CMAKE_SOURCE_DIR}/src/screen_history.c"
-        "${CMAKE_SOURCE_DIR}/src/screen_alerts.c"
-        "${CMAKE_SOURCE_DIR}/src/screen_load.c"
-        "${CMAKE_SOURCE_DIR}/src/weather_icon.c"
+        # Display / LVGL
+        "${CMAKE_SOURCE_DIR}/src/display/hal_esp32.c"
+        "${CMAKE_SOURCE_DIR}/src/display/lvgl_port.c"
+        # UI screens
+        "${CMAKE_SOURCE_DIR}/src/ui/ui_common.c"
+        "${CMAKE_SOURCE_DIR}/src/ui/weather_icon.c"
+        "${CMAKE_SOURCE_DIR}/src/ui/screen_main.c"
+        "${CMAKE_SOURCE_DIR}/src/ui/screen_battery.c"
+        "${CMAKE_SOURCE_DIR}/src/ui/screen_solar.c"
+        "${CMAKE_SOURCE_DIR}/src/ui/screen_weather.c"
+        "${CMAKE_SOURCE_DIR}/src/ui/screen_sleep.c"
+        "${CMAKE_SOURCE_DIR}/src/ui/screen_wifi.c"
+        "${CMAKE_SOURCE_DIR}/src/ui/screen_settings.c"
+        "${CMAKE_SOURCE_DIR}/src/ui/screen_history.c"
+        "${CMAKE_SOURCE_DIR}/src/ui/screen_alerts.c"
+        "${CMAKE_SOURCE_DIR}/src/ui/screen_load.c"
+        # WiFi
+        "${CMAKE_SOURCE_DIR}/src/wifi/wifi_manager.c"
+        # Inverter / UART
+        "${CMAKE_SOURCE_DIR}/src/inverter/modbus_inverter.c"
+        "${CMAKE_SOURCE_DIR}/src/inverter/uart_input.c"
+        # FOTA
+        "${CMAKE_SOURCE_DIR}/src/fota/fota.c"
+        # Weather
+        "${CMAKE_SOURCE_DIR}/src/weather/weather_service.c"
     INCLUDE_DIRS
         "."
-        "${CMAKE_SOURCE_DIR}/src"
+        "${CMAKE_SOURCE_DIR}/src/display"
+        "${CMAKE_SOURCE_DIR}/src/ui"
+        "${CMAKE_SOURCE_DIR}/src/wifi"
+        "${CMAKE_SOURCE_DIR}/src/inverter"
+        "${CMAKE_SOURCE_DIR}/src/fota"
+        "${CMAKE_SOURCE_DIR}/src/weather"
     REQUIRES
         esp_timer
         esp_driver_gpio

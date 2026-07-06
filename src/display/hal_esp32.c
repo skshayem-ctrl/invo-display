@@ -1,4 +1,4 @@
-#include "hal/hal.h"
+#include "hal.h"
 #include "hw_config.h"
 #include "lvgl_port.h"
 #include "jd9365_init_cmds.h"
