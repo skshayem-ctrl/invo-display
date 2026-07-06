@@ -67,3 +67,6 @@ esp32/build/
 esp32/managed_components/
 esp32/sdkconfig
 esp32/dependencies.lock
+
+# Explainer HTML files (local reference only, not for production)
+*.html
