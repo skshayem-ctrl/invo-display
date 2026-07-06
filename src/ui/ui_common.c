@@ -8,7 +8,7 @@
 #ifdef ESP_PLATFORM
 #  include "esp_random.h"
 #else
-#  include "hal/hal.h"
+#  include "hal.h"
 #endif
 
 /* ── global state ──────────────────────────────────────────────── */

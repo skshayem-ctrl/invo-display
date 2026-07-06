@@ -2,7 +2,7 @@
 #include "ui_common.h"
 #include "lvgl_port.h"
 #include "fota.h"
-#include "hal/hal.h"
+#include "hal.h"
 
 /* ── Brightness ─────────────────────────────────────────────────── */
 static lv_obj_t * s_brightness_pct_lbl;

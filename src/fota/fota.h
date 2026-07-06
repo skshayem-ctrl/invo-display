@@ -1,6 +1,12 @@
 #pragma once
 #include <stdbool.h>
 
+/* FOTA endpoints — CI writes version.json to both current and legacy esp32/ path */
+#define FOTA_VER_URL \
+    "https://raw.githubusercontent.com/skshayem-ctrl/invo-display/master/version.json"
+#define FOTA_BIN_URL \
+    "https://raw.githubusercontent.com/skshayem-ctrl/invo-display/binaries/invo-esp32.bin"
+
 typedef enum {
     FOTA_IDLE = 0,
     FOTA_CHECKING,

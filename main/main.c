@@ -2,7 +2,7 @@
 #include "freertos/task.h"
 #include "esp_ota_ops.h"
 
-#include "hal/hal.h"
+#include "hal.h"
 #include "hw_config.h"
 #include "ui_common.h"
 #include "lvgl_port.h"
