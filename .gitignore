@@ -1,75 +1,48 @@
-demo
-
-# Prerequisites
+# Build artifacts
+build/
 *.d
-
-# Object files
 *.o
 *.ko
 *.obj
 *.elf
-/build/
-/bin/
-
-# Linker output
-*.ilk
 *.map
 *.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
 *.lib
 *.a
 *.la
 *.lo
-
-# Shared objects (inc. Windows DLLs)
+*.gch
+*.pch
 *.dll
 *.so
 *.so.*
 *.dylib
-
-# Executables
 *.exe
 *.out
 *.app
-*.i*86
-*.x86_64
 *.hex
-
-# Debug files
 *.dSYM/
 *.su
 *.idb
 *.pdb
-
-# Kernel Module Compile Results
 *.mod*
 *.cmd
 .tmp_versions/
 modules.order
 Module.symvers
-Mkfile.old
-dkms.conf
-/Debug/
+
+# ESP-IDF generated
+managed_components/
+sdkconfig
+dependencies.lock
+
+# Log files
+*.csv
+
+# IDE / tools
+.vscode/settings.json
 .cache
-
-# IDE Project files
-/.settings/
-.*project
-.deps
-
-# ESP32 build artifacts
-esp32/build/
-esp32/managed_components/
-esp32/sdkconfig
-esp32/dependencies.lock
-
-# Explainer HTML files (local reference only, not for production)
-*.html
-
-# Claude Code instructions (local dev tool config, not for production)
 CLAUDE.md
+
+# Explainer HTML (local reference only)
+*.html

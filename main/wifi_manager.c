@@ -236,6 +236,19 @@ bool wifi_manager_ap_info(int idx, char ssid[33], int8_t *rssi, bool *secured)
     return true;
 }
 
+void wifi_manager_connected_ssid(char out[33])
+{
+    if (!s_connected) { out[0] = '\0'; return; }
+    wifi_config_t cfg = {};
+    if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK) {
+        memcpy(out, cfg.sta.ssid, 32);
+        out[32] = '\0';
+    } else {
+        out[0] = '\0';
+    }
+    out[32] = '\0';
+}
+
 void wifi_manager_connect_to(const char *ssid, const char *pass)
 {
     s_has_credentials = true;

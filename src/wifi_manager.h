@@ -15,3 +15,4 @@ bool       wifi_manager_ap_info(int idx, char ssid[33], int8_t *rssi, bool *secu
 
 void       wifi_manager_connect_to(const char *ssid, const char *pass);
 wm_state_t wifi_manager_conn_state(void);
+void       wifi_manager_connected_ssid(char out[33]); /* currently connected SSID, or "" */
