@@ -22,67 +22,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── Pi 5 build (self-hosted runner on the Pi) ────────────────────────
-  build-pi:
-    runs-on: self-hosted
-    needs: create-release
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Build
-        run: |
-          mkdir -p build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
-          make -j4
-
-      - name: Package and sign
-        run: |
-          VERSION=${{ github.ref_name }}
-          VER_CLEAN=${VERSION#v}
-          TARBALL="invo-${VERSION}.tar.gz"
-
-          mkdir -p dist
-          STAGE=$(mktemp -d)
-          mkdir -p "$STAGE/bin" "$STAGE/scripts"
-          cp build/bin/lvglsim            "$STAGE/bin/lvglsim"
-          cp scripts/invo_bridge.py       "$STAGE/scripts/invo_bridge.py"
-          cp scripts/invo-updater        "$STAGE/scripts/invo-updater"
-          echo "$VER_CLEAN" > "$STAGE/version"
-          tar -czf "dist/$TARBALL" -C "$STAGE" .
-          rm -rf "$STAGE"
-
-          SHA256=$(sha256sum "dist/$TARBALL" | cut -d' ' -f1)
-
-          SIG_FILE=$(mktemp)
-          openssl dgst -sha256 -sign /etc/invo/update-private.pem \
-            -out "$SIG_FILE" "dist/$TARBALL"
-          SIG_B64=$(base64 -w0 "$SIG_FILE")
-          rm "$SIG_FILE"
-
-          cat > dist/manifest.json <<EOF
-          {
-            "version": "$VER_CLEAN",
-            "package": "$TARBALL",
-            "sha256": "$SHA256",
-            "signature": "$SIG_B64"
-          }
-          EOF
-
-          echo "TARBALL=$TARBALL" >> $GITHUB_ENV
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-      - name: Upload Pi artifacts to release
-        run: |
-          gh release upload "$VERSION" \
-            "dist/$TARBALL" \
-            "dist/manifest.json" \
-            --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   # ── ESP32-P4 build (cloud runner, ESP-IDF via Docker) ───────────────
   build-esp32:
     runs-on: ubuntu-latest
@@ -90,8 +29,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Stamp version into sdkconfig.defaults
         id: ver
@@ -99,13 +36,13 @@ jobs:
           VER="${GITHUB_REF_NAME#v}"
           echo "clean=${VER}" >> $GITHUB_OUTPUT
           sed -i "s/CONFIG_APP_PROJECT_VER=.*/CONFIG_APP_PROJECT_VER=\"${VER}\"/" \
-            esp32/sdkconfig.defaults
+            sdkconfig.defaults
 
       - name: Build with ESP-IDF Docker image
         run: |
           docker run --rm \
             -v "${{ github.workspace }}":/workspace \
-            -w /workspace/esp32 \
+            -w /workspace \
             -e IDF_TARGET=esp32p4 \
             espressif/idf:release-v5.3 \
             bash -c "
@@ -119,9 +56,9 @@ jobs:
         run: |
           TAG="${{ github.ref_name }}"
           BIN="invo-esp32-${TAG}.bin"
-          sudo cp esp32/build/invo-esp32.bin "$BIN"
+          sudo cp build/invo-esp32.bin "$BIN"
           gh release upload "$TAG" "$BIN" --clobber
-          sudo cp esp32/build/invo-esp32.bin invo-esp32.bin
+          sudo cp build/invo-esp32.bin invo-esp32.bin
           gh release upload "$TAG" invo-esp32.bin --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -136,7 +73,7 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}"
-          sudo cp "$GITHUB_WORKSPACE/esp32/build/invo-esp32.bin" invo-esp32.bin
+          sudo cp "$GITHUB_WORKSPACE/build/invo-esp32.bin" invo-esp32.bin
           git add invo-esp32.bin
           git commit -m "chore: binary ${TAG} [skip ci]"
           git push origin HEAD:refs/heads/binaries --force
@@ -145,7 +82,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update esp32/version.json and push to main
+      - name: Update version.json and push to master
         run: |
           VER="${{ steps.ver.outputs.clean }}"
           TAG="${{ github.ref_name }}"
@@ -158,9 +95,9 @@ jobs:
           git checkout origin/master
 
           printf '{\n  "version": "%s",\n  "url": "%s"\n}\n' \
-            "$VER" "$RAW_URL" > esp32/version.json
+            "$VER" "$RAW_URL" > version.json
 
-          git add esp32/version.json
+          git add version.json
           if git diff --cached --quiet; then
             echo "version.json already up to date, nothing to commit"
           else

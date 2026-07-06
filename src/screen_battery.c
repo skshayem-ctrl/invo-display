@@ -20,7 +20,7 @@ static void chg_minus_cb(lv_event_t *e)
 
 static void chg_plus_cb(lv_event_t *e)
 {
-    if (s_chg_target + 50 <= 1000) s_chg_target += 50;
+    s_chg_target += 50;
     if (s_chg_target_lbl) lv_label_set_text_fmt(s_chg_target_lbl, "%d W", s_chg_target);
 }
 
