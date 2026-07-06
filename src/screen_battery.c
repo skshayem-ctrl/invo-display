@@ -31,13 +31,13 @@ static void chg_set_cb(lv_event_t *e)
 
 static void chgv_minus_cb(lv_event_t *e)
 {
-    if (s_chgv_target >= 462) s_chgv_target -= 2;   /* min 46.2V */
+    if (s_chgv_target >= 462) s_chgv_target -= 50;  /* step 5V */
     if (s_chgv_target_lbl) lv_label_set_text_fmt(s_chgv_target_lbl, "%d.%d V", s_chgv_target / 10, s_chgv_target % 10);
 }
 
 static void chgv_plus_cb(lv_event_t *e)
 {
-    if (s_chgv_target <= 582) s_chgv_target += 2;   /* max 58.4V */
+    if (s_chgv_target <= 582) s_chgv_target += 50;  /* step 5V */
     if (s_chgv_target_lbl) lv_label_set_text_fmt(s_chgv_target_lbl, "%d.%d V", s_chgv_target / 10, s_chgv_target % 10);
 }
 
