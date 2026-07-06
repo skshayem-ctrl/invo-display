@@ -7,6 +7,9 @@
 static int s_chg_target = 0;
 static lv_obj_t *s_chg_target_lbl = NULL;
 
+static int s_chgv_target = 0;       /* tenths of a volt, 0 = not set yet */
+static lv_obj_t *s_chgv_target_lbl = NULL;
+
 static void chg_minus_cb(lv_event_t *e)
 {
     if (s_chg_target >= 50) s_chg_target -= 50;
@@ -23,6 +26,26 @@ static void chg_set_cb(lv_event_t *e)
 {
 #ifdef ESP_PLATFORM
     modbus_inverter_request_chg_w(s_chg_target);
+#endif
+}
+
+static void chgv_minus_cb(lv_event_t *e)
+{
+    if (s_chgv_target >= 462) s_chgv_target -= 2;   /* min 46.2V */
+    if (s_chgv_target_lbl) lv_label_set_text_fmt(s_chgv_target_lbl, "%.1f V", s_chgv_target * 0.1f);
+}
+
+static void chgv_plus_cb(lv_event_t *e)
+{
+    if (s_chgv_target <= 582) s_chgv_target += 2;   /* max 58.4V */
+    if (s_chgv_target_lbl) lv_label_set_text_fmt(s_chgv_target_lbl, "%.1f V", s_chgv_target * 0.1f);
+}
+
+static void chgv_set_cb(lv_event_t *e)
+{
+    if (s_chgv_target == 0) return;
+#ifdef ESP_PLATFORM
+    modbus_inverter_request_chg_v(s_chgv_target);
 #endif
 }
 
@@ -201,6 +224,65 @@ lv_obj_t *screen_battery_create(void)
     lv_obj_set_style_text_color(ls, C_AMBER, 0);
     lv_obj_set_style_text_font(ls, &lv_font_montserrat_12, 0);
     lv_obj_center(ls);
+
+    /* ── Charge Voltage card (below ON/OFF buttons, right side) ──────────── */
+    lv_obj_t *vcard = lv_obj_create(scr);
+    lv_obj_set_size(vcard, 185, 90);
+    lv_obj_align(vcard, LV_ALIGN_CENTER, 85, 215);
+    lv_obj_set_style_bg_color(vcard, lv_color_hex(0x0a0f1a), 0);
+    lv_obj_set_style_border_color(vcard, C_GREEN, 0);
+    lv_obj_set_style_border_width(vcard, 1, 0);
+    lv_obj_set_style_radius(vcard, 12, 0);
+    lv_obj_set_style_pad_all(vcard, 8, 0);
+    lv_obj_clear_flag(vcard, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *vtitle = lv_label_create(vcard);
+    lv_label_set_text(vtitle, "CHG VOLTAGE");
+    lv_obj_set_style_text_color(vtitle, C_GREEN, 0);
+    lv_obj_set_style_text_font(vtitle, &lv_font_montserrat_12, 0);
+    lv_obj_align(vtitle, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    lv_obj_t *btn_vm = lv_btn_create(vcard);
+    lv_obj_set_size(btn_vm, 32, 32);
+    lv_obj_align(btn_vm, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_obj_set_style_bg_color(btn_vm, C_DGRAY, 0);
+    lv_obj_set_style_radius(btn_vm, 6, 0);
+    lv_obj_add_event_cb(btn_vm, chgv_minus_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *lvm = lv_label_create(btn_vm);
+    lv_label_set_text(lvm, "-");
+    lv_obj_set_style_text_font(lvm, &lv_font_montserrat_16, 0);
+    lv_obj_center(lvm);
+
+    s_chgv_target_lbl = lv_label_create(vcard);
+    lv_label_set_text(s_chgv_target_lbl, "--");
+    lv_obj_set_style_text_color(s_chgv_target_lbl, C_GREEN, 0);
+    lv_obj_set_style_text_font(s_chgv_target_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_align(s_chgv_target_lbl, LV_ALIGN_BOTTOM_MID, -16, -6);
+
+    lv_obj_t *btn_vp = lv_btn_create(vcard);
+    lv_obj_set_size(btn_vp, 32, 32);
+    lv_obj_align(btn_vp, LV_ALIGN_BOTTOM_MID, 24, 0);
+    lv_obj_set_style_bg_color(btn_vp, C_DGRAY, 0);
+    lv_obj_set_style_radius(btn_vp, 6, 0);
+    lv_obj_add_event_cb(btn_vp, chgv_plus_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *lvp = lv_label_create(btn_vp);
+    lv_label_set_text(lvp, "+");
+    lv_obj_set_style_text_font(lvp, &lv_font_montserrat_16, 0);
+    lv_obj_center(lvp);
+
+    lv_obj_t *btn_vset = lv_btn_create(vcard);
+    lv_obj_set_size(btn_vset, 42, 32);
+    lv_obj_align(btn_vset, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    lv_obj_set_style_bg_color(btn_vset, lv_color_hex(0x001a00), 0);
+    lv_obj_set_style_border_color(btn_vset, C_GREEN, 0);
+    lv_obj_set_style_border_width(btn_vset, 1, 0);
+    lv_obj_set_style_radius(btn_vset, 6, 0);
+    lv_obj_add_event_cb(btn_vset, chgv_set_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *lvs = lv_label_create(btn_vset);
+    lv_label_set_text(lvs, "SET");
+    lv_obj_set_style_text_color(lvs, C_GREEN, 0);
+    lv_obj_set_style_text_font(lvs, &lv_font_montserrat_12, 0);
+    lv_obj_center(lvs);
 
     add_logo(scr, -22);
     return scr;
