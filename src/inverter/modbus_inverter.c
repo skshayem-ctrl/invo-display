@@ -207,7 +207,7 @@ static void modbus_task(void *arg)
         int   grid_chg_w = s16(r1[14]);   /* 4031 mains charge power W */
         float grid_hz    = r1[15] * 0.01f;
         float inv_out_v  = r2[0]  * 0.1f;
-        float out_a      = s16(r2[1])  * 0.1f;
+        float out_a      = s16(r2[1])  * 0.01f;
         int   out_w      = s16(r2[2]);
         float out_hz     = r2[3]  * 0.01f;
         uint16_t op_st   = r2[4];
