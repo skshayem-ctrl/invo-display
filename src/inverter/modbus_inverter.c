@@ -29,34 +29,36 @@
 #include <string.h>
 #include <math.h>
 
-#define TAG           "modbus"
+#define TAG "modbus"
 
-#define MB_SLAVE      1
-#define REG_B1_START  4017
-#define REG_B1_COUNT  17      /* 4017-4033 */
-#define REG_B2_START  4036
-#define REG_B2_COUNT  8       /* 4036-4043 */
-#define REG_OUT_CTRL  4049
-#define REG_CHG_CTRL  4054
-#define REG_CHG_VOLT  4056   /* Battery charge voltage setpoint ×0.1V */
+#define MB_SLAVE 1
+#define REG_B1_START 4017
+#define REG_B1_COUNT 17 /* 4017-4033 */
+#define REG_B2_START 4036
+#define REG_B2_COUNT 8 /* 4036-4043 */
+#define REG_OUT_CTRL 4049
+#define REG_CHG_CTRL 4054
+#define REG_CHG_VOLT 4056 /* Battery charge voltage setpoint ×0.1V */
+#define REG_B3_START 4054
+#define REG_B3_COUNT 3 /* 4054: charge power setpoint W */
 
+static volatile bool s_valid = false;
+static volatile int s_pending_cmd = -1;
+static volatile int s_pending_chg_w = -1;
+static volatile int s_pending_chg_v = -1;
 
-static volatile bool s_valid         = false;
-static volatile int  s_pending_cmd   = -1;
-static volatile int  s_pending_chg_w = -1;
-static volatile int  s_pending_chg_v = -1;
-
-bool modbus_inverter_valid(void)                    { return s_valid; }
-void modbus_inverter_request_output(int on)         { s_pending_cmd = on; }
-void modbus_inverter_request_chg_w(int watts)       { s_pending_chg_w = watts; }
-void modbus_inverter_request_chg_v(int tenths_v)    { s_pending_chg_v = tenths_v; }
+bool modbus_inverter_valid(void) { return s_valid; }
+void modbus_inverter_request_output(int on) { s_pending_cmd = on; }
+void modbus_inverter_request_chg_w(int watts) { s_pending_chg_w = watts; }
+void modbus_inverter_request_chg_v(int tenths_v) { s_pending_chg_v = tenths_v; }
 
 /* ── CRC16 ───────────────────────────────────────────────────────────── */
 
 static uint16_t crc16(const uint8_t *data, int len)
 {
     uint16_t crc = 0xFFFF;
-    for (int i = 0; i < len; i++) {
+    for (int i = 0; i < len; i++)
+    {
         crc ^= data[i];
         for (int j = 0; j < 8; j++)
             crc = (crc & 1) ? (crc >> 1) ^ 0xA001 : crc >> 1;
@@ -69,7 +71,8 @@ static inline int16_t s16(uint16_t v) { return (int16_t)v; }
 /* ── RS485 direction helpers — software GPIO ─────────────────────────── */
 
 static void de_tx(void) { gpio_set_level(MB_UART_DE, 1); }
-static void de_rx(void) {
+static void de_rx(void)
+{
     /* Hard wait: 8 bytes @ 9600 baud = 8.33ms, so 15ms guarantees TX is done
      * even if uart_wait_tx_done returns prematurely on ESP32-P4 */
     vTaskDelay(pdMS_TO_TICKS(15));
@@ -81,15 +84,19 @@ static void de_rx(void) {
 static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
 {
     uint8_t req[8];
-    req[0] = MB_SLAVE; req[1] = 0x03;
-    req[2] = start >> 8; req[3] = start & 0xFF;
-    req[4] = 0;          req[5] = count;
+    req[0] = MB_SLAVE;
+    req[1] = 0x03;
+    req[2] = start >> 8;
+    req[3] = start & 0xFF;
+    req[4] = 0;
+    req[5] = count;
     uint16_t c = crc16(req, 6);
-    req[6] = c & 0xFF;   req[7] = c >> 8;
+    req[6] = c & 0xFF;
+    req[7] = c >> 8;
 
     uart_flush_input(MB_UART_NUM);
     de_tx();
-    vTaskDelay(pdMS_TO_TICKS(1));   /* module TX-enable settle */
+    vTaskDelay(pdMS_TO_TICKS(1)); /* module TX-enable settle */
     uart_write_bytes(MB_UART_NUM, req, 8);
     de_rx();
     ESP_LOGI(TAG, "TX reg=%u cnt=%u DE→RX gpio=%d", start, count,
@@ -98,29 +105,43 @@ static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
     int expected = 5 + count * 2;
     uint8_t resp[64];
     int got = uart_read_bytes(MB_UART_NUM, resp, expected, pdMS_TO_TICKS(1000));
-    if (got < expected) {
+    if (got < expected)
+    {
         ESP_LOGW(TAG, "RX timeout: got %d/%d (reg %u)", got, expected, start);
         return -1;
     }
 
-    if (resp[1] & 0x80) { ESP_LOGW(TAG, "Modbus exc 0x%02X", resp[2]); return -2; }
-    if (resp[2] != count * 2) return -3;
-    uint16_t resp_crc = (uint16_t)resp[expected-2] | ((uint16_t)resp[expected-1] << 8);
-    if (resp_crc != crc16(resp, expected - 2)) { ESP_LOGW(TAG, "CRC fail"); return -4; }
+    if (resp[1] & 0x80)
+    {
+        ESP_LOGW(TAG, "Modbus exc 0x%02X", resp[2]);
+        return -2;
+    }
+    if (resp[2] != count * 2)
+        return -3;
+    uint16_t resp_crc = (uint16_t)resp[expected - 2] | ((uint16_t)resp[expected - 1] << 8);
+    if (resp_crc != crc16(resp, expected - 2))
+    {
+        ESP_LOGW(TAG, "CRC fail");
+        return -4;
+    }
 
     for (int i = 0; i < count; i++)
-        out[i] = ((uint16_t)resp[3 + i*2] << 8) | resp[4 + i*2];
+        out[i] = ((uint16_t)resp[3 + i * 2] << 8) | resp[4 + i * 2];
     return count;
 }
 
 static void mb_write_reg(uint16_t addr, uint16_t value)
 {
     uint8_t req[8];
-    req[0] = MB_SLAVE; req[1] = 0x06;
-    req[2] = addr >> 8; req[3] = addr & 0xFF;
-    req[4] = value >> 8; req[5] = value & 0xFF;
+    req[0] = MB_SLAVE;
+    req[1] = 0x06;
+    req[2] = addr >> 8;
+    req[3] = addr & 0xFF;
+    req[4] = value >> 8;
+    req[5] = value & 0xFF;
     uint16_t c = crc16(req, 6);
-    req[6] = c & 0xFF; req[7] = c >> 8;
+    req[6] = c & 0xFF;
+    req[7] = c >> 8;
 
     uart_flush_input(MB_UART_NUM);
     de_tx();
@@ -149,18 +170,23 @@ static void modbus_task(void *arg)
     {
         uint8_t sniff[128];
         int n = uart_read_bytes(MB_UART_NUM, sniff, sizeof(sniff), pdMS_TO_TICKS(20000));
-        if (n > 0) {
+        if (n > 0)
+        {
             ESP_LOGI(TAG, "SNIFF got %d bytes:", n);
             esp_log_buffer_hex(TAG, sniff, n);
-        } else {
+        }
+        else
+        {
             ESP_LOGW(TAG, "SNIFF: 0 bytes in 20s — receiver likely dead");
         }
     }
 
-    while (1) {
+    while (1)
+    {
         /* Pending output ON/OFF command */
         int cmd = s_pending_cmd;
-        if (cmd >= 0) {
+        if (cmd >= 0)
+        {
             s_pending_cmd = -1;
             mb_write_reg(REG_OUT_CTRL, cmd ? 1 : 0);
             ESP_LOGI(TAG, "Output %s", cmd ? "ON" : "OFF");
@@ -169,7 +195,8 @@ static void modbus_task(void *arg)
 
         /* Pending charge power setpoint */
         int chg = s_pending_chg_w;
-        if (chg >= 0) {
+        if (chg >= 0)
+        {
             s_pending_chg_w = -1;
             mb_write_reg(REG_CHG_CTRL, (uint16_t)chg);
             ESP_LOGI(TAG, "Charge W set → %d W", chg);
@@ -177,7 +204,8 @@ static void modbus_task(void *arg)
 
         /* Pending charge voltage setpoint */
         int chgv = s_pending_chg_v;
-        if (chgv >= 0) {
+        if (chgv >= 0)
+        {
             s_pending_chg_v = -1;
             mb_write_reg(REG_CHG_VOLT, (uint16_t)chgv);
             ESP_LOGI(TAG, "Charge V set → %.1f V", chgv * 0.1f);
@@ -188,8 +216,12 @@ static void modbus_task(void *arg)
         int rc1 = mb_read_regs(REG_B1_START, REG_B1_COUNT, r1);
         vTaskDelay(pdMS_TO_TICKS(50));
         int rc2 = mb_read_regs(REG_B2_START, REG_B2_COUNT, r2);
+        vTaskDelay(pdMS_TO_TICKS(50));
+        uint16_t r3[REG_B3_COUNT];
+        int rc3 = mb_read_regs(REG_B3_START, REG_B3_COUNT, r3);
 
-        if (rc1 < 0 || rc2 < 0) {
+        if (rc1 < 0 || rc2 < 0)
+        {
             ESP_LOGW(TAG, "Poll failed (rc1=%d rc2=%d)", rc1, rc2);
             s_valid = false;
             vTaskDelay(pdMS_TO_TICKS(3000));
@@ -197,35 +229,40 @@ static void modbus_task(void *arg)
         }
 
         /* ── Decode ───────────────────────────────────────────── */
-        float pv_v       = r1[0]  * 0.1f;
-        float pv_a       = s16(r1[1])  * 0.1f;
-        int   pv_w       = s16(r1[2]);
-        float batt_v     = r1[7]  * 0.1f;
-        float batt_a     = s16(r1[8])  * 0.1f;
-        int   batt_w     = s16(r1[9]);
+        float pv_v = r1[0] * 0.1f;
+        float pv_a = s16(r1[1]) * 0.1f;
+        int pv_w = s16(r1[2]);
+        float batt_v = r1[7] * 0.1f;
+        float batt_a = s16(r1[8]) * 0.1f;
+        int batt_w = s16(r1[9]);
         float raw_grid_v = r1[11] * 0.1f;
-        int   grid_chg_w = s16(r1[14]);   /* 4031 mains charge power W */
-        float grid_hz    = r1[15] * 0.01f;
-        float inv_out_v  = r2[0]  * 0.1f;
-        float out_a      = s16(r2[1])  * 0.01f;
-        int   out_w      = s16(r2[2]);
-        float out_hz     = r2[3]  * 0.01f;
-        uint16_t op_st   = r2[4];
-        float inv_t      = s16(r2[7])  * 0.1f;
+        int grid_chg_w = s16(r1[14]); /* 4031 mains charge power W */
+        float grid_hz = r1[15] * 0.01f;
+        float inv_out_v = r2[0] * 0.1f;
+        float out_a = s16(r2[1]) * 0.01f;
+        int out_w = s16(r2[2]);
+        int chg_set_w = (rc3 >= 0) ? (int)r3[0] : 0;
+        int chgv_set_v = (rc3 >= 0) ? (int)r3[2] : 0;
+        float out_hz = r2[3] * 0.01f;
+        uint16_t op_st = r2[4];
+        float inv_t = s16(r2[7]) * 0.1f;
 
         int is_bypassing = (op_st >> 10) & 1;
-        int inv_on       = (op_st >>  8) & 1;
-        int ac_chg       = (op_st >>  9) & 1;
-        int fault        = (op_st >> 11) & 1;
-        float out_v      = is_bypassing ? raw_grid_v : inv_out_v;
+        int inv_on = (op_st >> 8) & 1;
+        int ac_chg = (op_st >> 9) & 1;
+        int fault = (op_st >> 11) & 1;
+        float out_v = is_bypassing ? raw_grid_v : inv_out_v;
 
-        if ((out_hz > 0.0f && out_hz < 44.0f) || out_hz > 56.0f) {
+        if ((out_hz > 0.0f && out_hz < 44.0f) || out_hz > 56.0f)
+        {
             ESP_LOGW(TAG, "Bad out_hz %.2f — discard", out_hz);
-            vTaskDelay(pdMS_TO_TICKS(3000)); continue;
+            vTaskDelay(pdMS_TO_TICKS(3000));
+            continue;
         }
 
         /* Bad grid_hz means AC is gone — zero grid data, keep rest */
-        if ((grid_hz > 0.0f && grid_hz < 44.0f) || grid_hz > 56.0f) {
+        if ((grid_hz > 0.0f && grid_hz < 44.0f) || grid_hz > 56.0f)
+        {
             ESP_LOGW(TAG, "Bad grid_hz %.2f — grid data zeroed", grid_hz);
             grid_hz = 0.0f;
             raw_grid_v = 0.0f;
@@ -235,44 +272,43 @@ static void modbus_task(void *arg)
 
         float grid_v = raw_grid_v >= 80.0f ? raw_grid_v : 0.0f;
 
-        /* Watt register is unreliable in both modes — always use V×A */
-        int out_w_used = (int)(out_v * fabsf(out_a));
-
         /* ── Write to gd ────────────────────────────────────────── */
         lvgl_acquire();
-        gd.solar_kw  = pv_w > 0  ? (float)pv_w / 1000.0f : 0.0f;
-        gd.pv_v      = pv_v  > 0.0f ? pv_v  : 0.0f;
-        gd.pv_a      = pv_a  > 0.0f ? pv_a  : 0.0f;
-        gd.load_kw   = out_w_used > 20 ? (float)out_w_used / 1000.0f : 0.0f;
-        gd.batt_pct  = 0;   /* populated from BMS later */
-        gd.batt_v    = batt_ok ? batt_v : 0.0f;
-        gd.batt_a    = batt_a;
-        gd.chg_kw    = (float)batt_w / 1000.0f;
+        gd.solar_kw = pv_w > 0 ? (float)pv_w / 1000.0f : 0.0f;
+        gd.pv_v = pv_v > 0.0f ? pv_v : 0.0f;
+        gd.pv_a = pv_a > 0.0f ? pv_a : 0.0f;
+        gd.load_kw = out_w > 20 ? (float)out_w / 1000.0f : 0.0f;
+        gd.batt_pct = 0; /* populated from BMS later */
+        gd.batt_v = batt_ok ? batt_v : 0.0f;
+        gd.batt_a = batt_a;
+        gd.chg_kw = (float)batt_w / 1000.0f;
+        gd.chg_set_w = chg_set_w;
+        gd.chgv_set_v = chgv_set_v;
         gd.batt_temp = (-10.0f <= inv_t && inv_t <= 120.0f) ? inv_t : 0.0f;
-        gd.backup_h  = 0;
-        gd.backup_m  = 0;
-        gd.grid_v      = grid_v;
-        gd.grid_hz     = grid_hz;
-        gd.grid_chg_w  = grid_chg_w;
-        gd.out_v     = out_v;
-        gd.out_hz    = out_hz;
-        gd.out_a     = out_a;
-        gd.inv_on    = inv_on;
-        gd.ac_chg    = ac_chg;
+        gd.backup_h = 0;
+        gd.backup_m = 0;
+        gd.grid_v = grid_v;
+        gd.grid_hz = grid_hz;
+        gd.grid_chg_w = grid_chg_w;
+        gd.out_v = out_v;
+        gd.out_hz = out_hz;
+        gd.out_a = out_a;
+        gd.inv_on = inv_on;
+        gd.ac_chg = ac_chg;
         gd.bypassing = is_bypassing;
-        gd.fault     = fault;
-        gd.voltage   = (int)(batt_ok ? batt_v : 0.0f);
-        gd.current   = batt_a;
+        gd.fault = fault;
+        gd.voltage = (int)(batt_ok ? batt_v : 0.0f);
+        gd.current = batt_a;
         s_valid = true;
         lvgl_release();
 
         ESP_LOGI(TAG,
-            "pv=%.1fV/%.1fA/%dW batt=%.1fV/%.1fA "
-            "out=%.1fV/%.2fHz/%dW/%.1fA grid=%.1fV/%.2fHz temp=%.1fC "
-            "inv=%d bypass=%d ac_chg=%d fault=%d op_st=0x%04X",
-            pv_v, pv_a, pv_w, batt_v, batt_a,
-            out_v, out_hz, out_w_used, out_a, grid_v, grid_hz, inv_t,
-            inv_on, is_bypassing, ac_chg, fault, op_st);
+                 "pv=%.1fV/%.1fA/%dW batt=%.1fV/%.1fA "
+                 "out=%.1fV/%.2fHz/%dW/%.1fA grid=%.1fV/%.2fHz temp=%.1fC "
+                 "inv=%d bypass=%d ac_chg=%d fault=%d op_st=0x%04X",
+                 pv_v, pv_a, pv_w, batt_v, batt_a,
+                 out_v, out_hz, out_w, out_a, grid_v, grid_hz, inv_t,
+                 inv_on, is_bypassing, ac_chg, fault, op_st);
 
         vTaskDelay(pdMS_TO_TICKS(3000));
     }
@@ -285,18 +321,18 @@ void modbus_inverter_start(void)
     /* DE pin — output, start low (receive mode) */
     gpio_config_t de_cfg = {
         .pin_bit_mask = BIT64(MB_UART_DE),
-        .mode         = GPIO_MODE_OUTPUT,
+        .mode = GPIO_MODE_OUTPUT,
     };
     ESP_ERROR_CHECK(gpio_config(&de_cfg));
     gpio_set_level(MB_UART_DE, 0);
     ESP_LOGI(TAG, "DE gpio=%d initial level=%d", MB_UART_DE, gpio_get_level(MB_UART_DE));
 
     uart_config_t uart_cfg = {
-        .baud_rate  = MB_BAUD,
-        .data_bits  = UART_DATA_8_BITS,
-        .parity     = UART_PARITY_DISABLE,
-        .stop_bits  = UART_STOP_BITS_1,
-        .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
+        .baud_rate = MB_BAUD,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
     };
     ESP_ERROR_CHECK(uart_param_config(MB_UART_NUM, &uart_cfg));
     ESP_ERROR_CHECK(uart_set_pin(MB_UART_NUM, MB_UART_TX, MB_UART_RX,
