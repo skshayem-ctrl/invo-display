@@ -6,9 +6,9 @@
 #include <stdlib.h>
 
 #ifdef ESP_PLATFORM
-#  include "esp_random.h"
+#include "esp_random.h"
 #else
-#  include "hal.h"
+#include "hal.h"
 #endif
 
 /* ── global state ──────────────────────────────────────────────── */
@@ -89,7 +89,8 @@ lv_obj_t *mk_card(lv_obj_t *par, int x, int y, int w, int h,
     lv_obj_set_style_text_font(val, &lv_font_montserrat_16, 0);
     lv_obj_align(val, LV_ALIGN_BOTTOM_LEFT, 0, has_sub ? -16 : 0);
 
-    if (has_sub) {
+    if (has_sub)
+    {
         lv_obj_t *s = lv_label_create(c);
         lv_label_set_text(s, sub);
         lv_obj_set_style_text_color(s, C_GRAY, 0);
@@ -99,10 +100,9 @@ lv_obj_t *mk_card(lv_obj_t *par, int x, int y, int w, int h,
     return c;
 }
 
-/* Pi-style stat card — label top-left (gray/12), value centred (col/20), sub bottom-left (col/12) */
 lv_obj_t *make_stat_card(lv_obj_t *scr, int w, int h, int ox, int oy,
-                          const char *label, const char *value, const char *sub,
-                          lv_color_t val_col, lv_color_t sub_col)
+                         const char *label, const char *value, const char *sub,
+                         lv_color_t val_col, lv_color_t sub_col)
 {
     lv_obj_t *card = lv_obj_create(scr);
     lv_obj_set_size(card, w, h);
@@ -152,7 +152,8 @@ lv_obj_t *mk_row(lv_obj_t *par)
 /* lv_snprintf has no %f — use stdlib snprintf for all float labels */
 void lv_lbl_setf(lv_obj_t *l, const char *fmt, double v)
 {
-    if (!l) return;
+    if (!l)
+        return;
     char buf[24];
     snprintf(buf, sizeof(buf), fmt, v);
     lv_label_set_text(l, buf);
@@ -278,7 +279,8 @@ void go_alerts_cb(lv_event_t *e)
 void swipe_back_cb(lv_event_t *e)
 {
     lv_indev_t *indev = lv_indev_active();
-    if (!indev) return;
+    if (!indev)
+        return;
     if (lv_indev_get_gesture_dir(indev) == LV_DIR_RIGHT)
         lv_screen_load_anim(app.scr_main, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 250, 0, false);
 }
@@ -288,7 +290,7 @@ void wake_cb(lv_event_t *e)
 }
 void warn_ok_cb(lv_event_t *e)
 {
-    lv_obj_add_flag(app.w_warn_dlg,  LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(app.w_warn_dlg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(app.w_warn_ring, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -296,7 +298,8 @@ void warn_ok_cb(lv_event_t *e)
 
 void clock_tick_cb(lv_timer_t *t)
 {
-    if (wifi_manager_time_synced()) {
+    if (wifi_manager_time_synced())
+    {
         struct tm ti;
         time_t now = time(NULL);
         localtime_r(&now, &ti);
@@ -304,23 +307,38 @@ void clock_tick_cb(lv_timer_t *t)
         app.clk_m = ti.tm_min;
         app.clk_s = ti.tm_sec;
 
-        if (app.w_date) {
+        if (app.w_date)
+        {
             char date_buf[32];
             strftime(date_buf, sizeof(date_buf), "%b %d %A", &ti);
             lv_label_set_text(app.w_date, date_buf);
         }
-    } else {
+    }
+    else
+    {
         app.clk_s++;
-        if (app.clk_s >= 60) { app.clk_s = 0; app.clk_m++; }
-        if (app.clk_m >= 60) { app.clk_m = 0; app.clk_h++; }
-        if (app.clk_h >= 24) { app.clk_h = 0; }
+        if (app.clk_s >= 60)
+        {
+            app.clk_s = 0;
+            app.clk_m++;
+        }
+        if (app.clk_m >= 60)
+        {
+            app.clk_m = 0;
+            app.clk_h++;
+        }
+        if (app.clk_h >= 24)
+        {
+            app.clk_h = 0;
+        }
     }
 
     if (app.w_time)
         lv_label_set_text_fmt(app.w_time, "%02d:%02d", app.clk_h, app.clk_m);
 
     /* Auto-sleep after 10 s of no touch — only from main screen */
-    if (app.scr_sleep && lv_screen_active() == app.scr_main) {
+    if (app.scr_sleep && lv_screen_active() == app.scr_main)
+    {
         uint32_t idle_ms = lv_display_get_inactive_time(NULL);
         if (idle_ms >= 30000)
             lv_screen_load_anim(app.scr_sleep, LV_SCR_LOAD_ANIM_FADE_IN, 400, 0, false);
@@ -329,7 +347,8 @@ void clock_tick_cb(lv_timer_t *t)
     if (app.w_sleep_time)
         lv_label_set_text_fmt(app.w_sleep_time, "%02d:%02d", app.clk_h, app.clk_m);
 
-    if (app.w_sleep_date && wifi_manager_time_synced()) {
+    if (app.w_sleep_date && wifi_manager_time_synced())
+    {
         struct tm ti;
         time_t now = time(NULL);
         localtime_r(&now, &ti);
@@ -347,58 +366,92 @@ void data_tick_cb(lv_timer_t *t)
     /* On Pi: pull all fields from HAL (invo_bridge shared mem) */
     invo_data_t _d;
     hal_data_get(&_d);
-    if (_d.batt_pct > 0)        gd.batt_pct  = (int)_d.batt_pct;
-    if (_d.solar_kw > 0)        gd.solar_kw  = _d.solar_kw;
-    if (_d.load_kw  > 0)        gd.load_kw   = _d.load_kw;
-    if (_d.batt_v   > 0)      { gd.voltage   = (int)_d.batt_v; gd.batt_v = _d.batt_v; }
-    if (_d.batt_a   != 0)     { gd.current   = _d.batt_a;      gd.batt_a = _d.batt_a; }
-    if (_d.batt_temp > 0)       gd.batt_temp = _d.batt_temp;
-    if (_d.batt_backup_min > 0) {
+    if (_d.batt_pct > 0)
+        gd.batt_pct = (int)_d.batt_pct;
+    if (_d.solar_kw > 0)
+        gd.solar_kw = _d.solar_kw;
+    if (_d.load_kw > 0)
+        gd.load_kw = _d.load_kw;
+    if (_d.batt_v > 0)
+    {
+        gd.voltage = (int)_d.batt_v;
+        gd.batt_v = _d.batt_v;
+    }
+    if (_d.batt_a != 0)
+    {
+        gd.current = _d.batt_a;
+        gd.batt_a = _d.batt_a;
+    }
+    if (_d.batt_temp > 0)
+        gd.batt_temp = _d.batt_temp;
+    if (_d.batt_backup_min > 0)
+    {
         gd.backup_h = _d.batt_backup_min / 60;
         gd.backup_m = _d.batt_backup_min % 60;
     }
-    if (_d.solar_v  > 0)        gd.pv_v      = _d.solar_v;
-    if (_d.solar_a  != 0)       gd.pv_a      = _d.solar_a;
-    if (_d.grid_v   > 0)        gd.grid_v    = _d.grid_v;
-    if (_d.grid_hz  > 0)        gd.grid_hz   = _d.grid_hz;
-    if (_d.out_v    > 0)        gd.out_v     = _d.out_v;
-    if (_d.out_hz   > 0)        gd.out_hz    = _d.out_hz;
-    if (_d.out_a    != 0)       gd.out_a     = _d.out_a;
-    gd.inv_on    = _d.inv_on;
+    if (_d.solar_v > 0)
+        gd.pv_v = _d.solar_v;
+    if (_d.solar_a != 0)
+        gd.pv_a = _d.solar_a;
+    if (_d.grid_v > 0)
+        gd.grid_v = _d.grid_v;
+    if (_d.grid_hz > 0)
+        gd.grid_hz = _d.grid_hz;
+    if (_d.out_v > 0)
+        gd.out_v = _d.out_v;
+    if (_d.out_hz > 0)
+        gd.out_hz = _d.out_hz;
+    if (_d.out_a != 0)
+        gd.out_a = _d.out_a;
+    gd.inv_on = _d.inv_on;
     gd.bypassing = _d.bypassing;
-    gd.fault     = _d.fault;
-    gd.ac_chg    = _d.ac_chg;
+    gd.fault = _d.fault;
+    gd.ac_chg = _d.ac_chg;
 #endif
 
     lv_color_t wifi_col = wifi_manager_connected() ? C_GREEN : C_GRAY;
-    if (app.w_wifi)     lv_obj_set_style_text_color(app.w_wifi,     wifi_col, 0);
-    if (app.w_wifi_bd)  lv_obj_set_style_text_color(app.w_wifi_bd,  wifi_col, 0);
-    if (app.w_wifi_sd)  lv_obj_set_style_text_color(app.w_wifi_sd,  wifi_col, 0);
-    if (app.w_wifi_ld)  lv_obj_set_style_text_color(app.w_wifi_ld,  wifi_col, 0);
-    if (app.w_wifi_wxd) lv_obj_set_style_text_color(app.w_wifi_wxd, wifi_col, 0);
+    if (app.w_wifi)
+        lv_obj_set_style_text_color(app.w_wifi, wifi_col, 0);
+    if (app.w_wifi_bd)
+        lv_obj_set_style_text_color(app.w_wifi_bd, wifi_col, 0);
+    if (app.w_wifi_sd)
+        lv_obj_set_style_text_color(app.w_wifi_sd, wifi_col, 0);
+    if (app.w_wifi_ld)
+        lv_obj_set_style_text_color(app.w_wifi_ld, wifi_col, 0);
+    if (app.w_wifi_wxd)
+        lv_obj_set_style_text_color(app.w_wifi_wxd, wifi_col, 0);
 
 #ifdef ESP_PLATFORM
-    if (!uart_batt_valid()) {
-        gd.solar_kw  = 0.0f;  gd.load_kw   = 0.0f;
-        gd.batt_v    = 0.0f;  gd.batt_a    = 0.0f;
-        gd.chg_kw    = 0.0f;  gd.batt_temp = 0.0f;
-        gd.pv_v      = 0.0f;  gd.pv_a      = 0.0f;
-        gd.grid_v    = 0.0f;  gd.grid_hz   = 0.0f;  gd.grid_chg_w = 0;
-        gd.out_v     = 0.0f;  gd.out_hz    = 0.0f;  gd.out_a      = 0.0f;
+    if (!uart_batt_valid())
+    {
+        gd.solar_kw = 0.0f;
+        gd.load_kw = 0.0f;
+        gd.batt_v = 0.0f;
+        gd.batt_a = 0.0f;
+        gd.chg_kw = 0.0f;
+        gd.batt_temp = 0.0f;
+        gd.pv_v = 0.0f;
+        gd.pv_a = 0.0f;
+        gd.grid_v = 0.0f;
+        gd.grid_hz = 0.0f;
+        gd.grid_chg_w = 0;
+        gd.out_v = 0.0f;
+        gd.out_hz = 0.0f;
+        gd.out_a = 0.0f;
     }
     gd.today_solar_kwh += gd.solar_kw * (2.0f / 3600.0f);
-    gd.today_load_kwh  += gd.load_kw  * (2.0f / 3600.0f);
+    gd.today_load_kwh += gd.load_kw * (2.0f / 3600.0f);
     bool batt_ok = uart_batt_valid();
 #else
     gd.today_solar_kwh += gd.solar_kw * (2.0f / 3600.0f);
-    gd.today_load_kwh  += gd.load_kw  * (2.0f / 3600.0f);
+    gd.today_load_kwh += gd.load_kw * (2.0f / 3600.0f);
     bool batt_ok = (gd.batt_pct > 0);
 #endif
 
     bool pct_ok = batt_ok && gd.batt_pct > 0;
-    lv_color_t arc_col = pct_ok ? (gd.batt_pct >= 50 ? C_GREEN :
-                                    gd.batt_pct >= 20 ? C_AMBER : C_RED)
-                                 : C_GRAY;
+    lv_color_t arc_col = pct_ok ? (gd.batt_pct >= 50 ? C_GREEN : gd.batt_pct >= 20 ? C_AMBER
+                                                                                   : C_RED)
+                                : C_GRAY;
 
     /* ── Main screen ─────────────────────────────────────────────── */
     if (gd.solar_kw > 0)
@@ -420,7 +473,8 @@ void data_tick_cb(lv_timer_t *t)
                                        gd.backup_h, gd.backup_m)
                : lv_label_set_text(app.w_batt_backup, "--");
 
-    if (app.w_batt_arc) {
+    if (app.w_batt_arc)
+    {
         lv_arc_set_value(app.w_batt_arc, pct_ok ? gd.batt_pct : 0);
         lv_obj_set_style_arc_color(app.w_batt_arc, arc_col, LV_PART_INDICATOR);
     }
@@ -431,41 +485,51 @@ void data_tick_cb(lv_timer_t *t)
                : lv_label_set_text(app.w_bd_pct, "--");
     if (app.w_bd_batt_v)
         gd.batt_v > 0 ? lv_lbl_setf(app.w_bd_batt_v, "%.1f V", gd.batt_v)
-                       : lv_label_set_text(app.w_bd_batt_v, "--");
+                      : lv_label_set_text(app.w_bd_batt_v, "--");
     if (app.w_bd_batt_a)
         lv_lbl_setf(app.w_bd_batt_a, "%.1f A", gd.batt_a);
     if (app.w_bd_chg)
         lv_lbl_setf(app.w_bd_chg, "%.1f kW", gd.chg_kw);
     if (app.w_bd_tmp)
-        gd.batt_temp > 0 ? lv_lbl_setf(app.w_bd_tmp, "%.1f\xC2\xB0""C", gd.batt_temp)
+        gd.batt_temp > 0 ? lv_lbl_setf(app.w_bd_tmp, "%.1f\xC2\xB0"
+                                                     "C",
+                                       gd.batt_temp)
                          : lv_label_set_text(app.w_bd_tmp, "--");
+    if (gd.chg_set_w > 0)
+        screen_battery_set_chg_last(gd.chg_set_w);
+    if (gd.chgv_set_v > 0)
+        screen_battery_set_chgv_last(gd.chgv_set_v);
     if (app.w_bd_bkp)
         pct_ok ? lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm",
                                        gd.backup_h, gd.backup_m)
                : lv_label_set_text(app.w_bd_bkp, "--");
     if (app.w_bd_grid_chg_w)
         gd.grid_chg_w > 0 ? lv_label_set_text_fmt(app.w_bd_grid_chg_w, "%d W", gd.grid_chg_w)
-                           : lv_label_set_text(app.w_bd_grid_chg_w, "--");
+                          : lv_label_set_text(app.w_bd_grid_chg_w, "--");
     /* status flags */
-    if (app.w_bd_inv_on) {
+    if (app.w_bd_inv_on)
+    {
         lv_label_set_text(app.w_bd_inv_on, gd.inv_on ? "ON" : "OFF");
         lv_obj_set_style_text_color(app.w_bd_inv_on,
-            gd.inv_on ? C_GREEN : C_GRAY, 0);
+                                    gd.inv_on ? C_GREEN : C_GRAY, 0);
     }
-    if (app.w_bd_bypass) {
+    if (app.w_bd_bypass)
+    {
         lv_label_set_text(app.w_bd_bypass, gd.bypassing ? "YES" : "NO");
         lv_obj_set_style_text_color(app.w_bd_bypass,
-            gd.bypassing ? C_AMBER : C_GRAY, 0);
+                                    gd.bypassing ? C_AMBER : C_GRAY, 0);
     }
-    if (app.w_bd_fault) {
+    if (app.w_bd_fault)
+    {
         lv_label_set_text(app.w_bd_fault, gd.fault ? "YES" : "NO");
         lv_obj_set_style_text_color(app.w_bd_fault,
-            gd.fault ? C_RED : C_GRAY, 0);
+                                    gd.fault ? C_RED : C_GRAY, 0);
     }
-    if (app.w_bd_ac_chg) {
+    if (app.w_bd_ac_chg)
+    {
         lv_label_set_text(app.w_bd_ac_chg, gd.ac_chg ? "YES" : "NO");
         lv_obj_set_style_text_color(app.w_bd_ac_chg,
-            gd.ac_chg ? C_BLUE : C_GRAY, 0);
+                                    gd.ac_chg ? C_BLUE : C_GRAY, 0);
     }
 
     /* ── Solar detail ────────────────────────────────────────────── */

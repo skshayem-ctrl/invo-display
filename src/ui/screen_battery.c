@@ -6,22 +6,25 @@
 
 static int s_chg_target = 0;
 static lv_obj_t *s_chg_target_lbl = NULL;
-static lv_obj_t *s_chg_last_lbl   = NULL;
+static lv_obj_t *s_chg_last_lbl = NULL;
 
-static int s_chgv_target = 512;     /* tenths of a volt — default 51.2V (48V LFP nominal) */
+static int s_chgv_target = 512; /* tenths of a volt — default 51.2V (48V LFP nominal) */
 static lv_obj_t *s_chgv_target_lbl = NULL;
-static lv_obj_t *s_chgv_last_lbl   = NULL;
+static lv_obj_t *s_chgv_last_lbl = NULL;
 
 static void chg_minus_cb(lv_event_t *e)
 {
-    if (s_chg_target - 50 >= 0) s_chg_target -= 50;
-    if (s_chg_target_lbl) lv_label_set_text_fmt(s_chg_target_lbl, "%d W", s_chg_target);
+    if (s_chg_target - 50 >= 0)
+        s_chg_target -= 50;
+    if (s_chg_target_lbl)
+        lv_label_set_text_fmt(s_chg_target_lbl, "%d W", s_chg_target);
 }
 
 static void chg_plus_cb(lv_event_t *e)
 {
     s_chg_target += 50;
-    if (s_chg_target_lbl) lv_label_set_text_fmt(s_chg_target_lbl, "%d W", s_chg_target);
+    if (s_chg_target_lbl)
+        lv_label_set_text_fmt(s_chg_target_lbl, "%d W", s_chg_target);
 }
 
 static void chg_set_cb(lv_event_t *e)
@@ -29,19 +32,24 @@ static void chg_set_cb(lv_event_t *e)
 #ifdef ESP_PLATFORM
     modbus_inverter_request_chg_w(s_chg_target);
 #endif
-    if (s_chg_last_lbl) lv_label_set_text_fmt(s_chg_last_lbl, "Last: %d W", s_chg_target);
+    if (s_chg_last_lbl)
+        lv_label_set_text_fmt(s_chg_last_lbl, "Last: %d W", s_chg_target);
 }
 
 static void chgv_minus_cb(lv_event_t *e)
 {
-    if (s_chgv_target - 2 >= 462) s_chgv_target -= 2;   /* min 46.2V */
-    if (s_chgv_target_lbl) lv_label_set_text_fmt(s_chgv_target_lbl, "%d.%d V", s_chgv_target / 10, s_chgv_target % 10);
+    if (s_chgv_target - 2 >= 462)
+        s_chgv_target -= 2; /* min 46.2V */
+    if (s_chgv_target_lbl)
+        lv_label_set_text_fmt(s_chgv_target_lbl, "%d.%d V", s_chgv_target / 10, s_chgv_target % 10);
 }
 
 static void chgv_plus_cb(lv_event_t *e)
 {
-    if (s_chgv_target + 2 <= 584) s_chgv_target += 2;   /* max 58.4V */
-    if (s_chgv_target_lbl) lv_label_set_text_fmt(s_chgv_target_lbl, "%d.%d V", s_chgv_target / 10, s_chgv_target % 10);
+    if (s_chgv_target + 2 <= 584)
+        s_chgv_target += 2; /* max 58.4V */
+    if (s_chgv_target_lbl)
+        lv_label_set_text_fmt(s_chgv_target_lbl, "%d.%d V", s_chgv_target / 10, s_chgv_target % 10);
 }
 
 static void chgv_set_cb(lv_event_t *e)
@@ -49,7 +57,8 @@ static void chgv_set_cb(lv_event_t *e)
 #ifdef ESP_PLATFORM
     modbus_inverter_request_chg_v(s_chgv_target);
 #endif
-    if (s_chgv_last_lbl) lv_label_set_text_fmt(s_chgv_last_lbl, "Last: %d.%d V", s_chgv_target / 10, s_chgv_target % 10);
+    if (s_chgv_last_lbl)
+        lv_label_set_text_fmt(s_chgv_last_lbl, "Last: %d.%d V", s_chgv_target / 10, s_chgv_target % 10);
 }
 
 static void output_on_cb(lv_event_t *e)
@@ -58,7 +67,11 @@ static void output_on_cb(lv_event_t *e)
     modbus_inverter_request_output(1);
 #else
     FILE *f = fopen("/home/intelli/invo_cmd", "w");
-    if (f) { fprintf(f, "output_on\n"); fclose(f); }
+    if (f)
+    {
+        fprintf(f, "output_on\n");
+        fclose(f);
+    }
 #endif
 }
 
@@ -68,7 +81,11 @@ static void output_off_cb(lv_event_t *e)
     modbus_inverter_request_output(0);
 #else
     FILE *f = fopen("/home/intelli/invo_cmd", "w");
-    if (f) { fprintf(f, "output_off\n"); fclose(f); }
+    if (f)
+    {
+        fprintf(f, "output_off\n");
+        fclose(f);
+    }
 #endif
 }
 
@@ -100,7 +117,8 @@ lv_obj_t *screen_battery_create(void)
     /* 4 status rows */
     static const char *const row_names[] = {"INVERTER", "AC CHARGE", "BYPASS", "FAULT"};
     lv_obj_t *status_vals[4];
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         int oy = 22 + i * 40;
 
         lv_obj_t *rl = lv_label_create(scard);
@@ -119,15 +137,15 @@ lv_obj_t *screen_battery_create(void)
     app.w_bd_inv_on = status_vals[0];
     app.w_bd_ac_chg = status_vals[1];
     app.w_bd_bypass = status_vals[2];
-    app.w_bd_fault  = status_vals[3];
+    app.w_bd_fault = status_vals[3];
 
     /* ── Right: 2×3 stat grid (175×80, CENTER offsets) ─────────────── */
-    app.w_bd_pct    = make_stat_card(scr, 175, 80,  -8, -170, "SOC",       "--", "Charge level",  C_GREEN,  C_GRAY);
-    app.w_bd_batt_v = make_stat_card(scr, 175, 80, 177, -170, "Battery V", "--", "DC bus voltage", C_GREEN,  C_GRAY);
-    app.w_bd_batt_a = make_stat_card(scr, 175, 80,  -8,  -75, "Battery A", "--", "Batt current",  C_GREEN,  C_GRAY);
-    app.w_bd_chg    = make_stat_card(scr, 175, 80, 177,  -75, "Charge",    "--", "Charge power",  C_ORANGE, C_GRAY);
-    app.w_bd_tmp    = make_stat_card(scr, 175, 80,  -8,   20, "Inv Temp",  "--", "Inverter temp", C_ORANGE, C_GRAY);
-    app.w_bd_bkp    = make_stat_card(scr, 175, 80, 177,   20, "Backup",    "--", "Est. runtime",  C_BLUE,   C_GRAY);
+    app.w_bd_pct = make_stat_card(scr, 175, 80, -8, -170, "SOC", "--", "Charge level", C_GREEN, C_GRAY);
+    app.w_bd_batt_v = make_stat_card(scr, 175, 80, 177, -170, "Battery V", "--", "DC bus voltage", C_GREEN, C_GRAY);
+    app.w_bd_batt_a = make_stat_card(scr, 175, 80, -8, -75, "Battery A", "--", "Batt current", C_GREEN, C_GRAY);
+    app.w_bd_chg = make_stat_card(scr, 175, 80, 177, -75, "Charge", "--", "Charge power", C_ORANGE, C_GRAY);
+    app.w_bd_tmp = make_stat_card(scr, 175, 80, -8, 20, "Inv Temp", "--", "Inverter temp", C_ORANGE, C_GRAY);
+    app.w_bd_bkp = make_stat_card(scr, 175, 80, 177, 20, "Backup", "--", "Est. runtime", C_BLUE, C_GRAY);
 
     /* ── Output ON button ───────────────────────────────────────────── */
     lv_obj_t *on_btn = lv_btn_create(scr);
@@ -303,4 +321,16 @@ lv_obj_t *screen_battery_create(void)
 
     add_logo(scr, -22);
     return scr;
+}
+
+void screen_battery_set_chg_last(int watts)
+{
+    if (s_chg_last_lbl)
+        lv_label_set_text_fmt(s_chg_last_lbl, "Last: %d W", watts);
+}
+
+void screen_battery_set_chgv_last(int tenths_v)
+{
+    if (s_chgv_last_lbl)
+        lv_label_set_text_fmt(s_chgv_last_lbl, "Last: %d.%d V", tenths_v / 10, tenths_v % 10);
 }
