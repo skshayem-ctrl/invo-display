@@ -499,6 +499,7 @@ void data_tick_cb(lv_timer_t *t)
         screen_battery_set_chg_last(gd.chg_set_w);
     if (gd.chgv_set_v > 0)
         screen_battery_set_chgv_last(gd.chgv_set_v);
+    screen_battery_set_output_state(gd.inv_on);
     if (app.w_bd_bkp)
         pct_ok ? lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm",
                                        gd.backup_h, gd.backup_m)

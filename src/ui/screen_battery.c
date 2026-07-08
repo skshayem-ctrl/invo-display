@@ -1,8 +1,6 @@
 #include "ui_common.h"
 #include <stdio.h>
-#ifdef ESP_PLATFORM
 #include "modbus_inverter.h"
-#endif
 
 static int s_chg_target = 0;
 static lv_obj_t *s_chg_target_lbl = NULL;
@@ -11,6 +9,8 @@ static lv_obj_t *s_chg_last_lbl = NULL;
 static int s_chgv_target = 512; /* tenths of a volt — default 51.2V (48V LFP nominal) */
 static lv_obj_t *s_chgv_target_lbl = NULL;
 static lv_obj_t *s_chgv_last_lbl = NULL;
+static lv_obj_t *s_out_status_lbl = NULL;
+static lv_obj_t *s_out_btn_lbl = NULL;
 
 static void chg_minus_cb(lv_event_t *e)
 {
@@ -61,32 +61,9 @@ static void chgv_set_cb(lv_event_t *e)
         lv_label_set_text_fmt(s_chgv_last_lbl, "Last: %d.%d V", s_chgv_target / 10, s_chgv_target % 10);
 }
 
-static void output_on_cb(lv_event_t *e)
+static void output_toggle_cb(lv_event_t *e)
 {
-#ifdef ESP_PLATFORM
-    modbus_inverter_request_output(1);
-#else
-    FILE *f = fopen("/home/intelli/invo_cmd", "w");
-    if (f)
-    {
-        fprintf(f, "output_on\n");
-        fclose(f);
-    }
-#endif
-}
-
-static void output_off_cb(lv_event_t *e)
-{
-#ifdef ESP_PLATFORM
-    modbus_inverter_request_output(0);
-#else
-    FILE *f = fopen("/home/intelli/invo_cmd", "w");
-    if (f)
-    {
-        fprintf(f, "output_off\n");
-        fclose(f);
-    }
-#endif
+    modbus_inverter_request_output(gd.inv_on ? 0 : 1);
 }
 
 lv_obj_t *screen_battery_create(void)
@@ -147,37 +124,26 @@ lv_obj_t *screen_battery_create(void)
     app.w_bd_tmp = make_stat_card(scr, 175, 80, -8, 20, "Inv Temp", "--", "Inverter temp", C_ORANGE, C_GRAY);
     app.w_bd_bkp = make_stat_card(scr, 175, 80, 177, 20, "Backup", "--", "Est. runtime", C_BLUE, C_GRAY);
 
-    /* ── Output ON button ───────────────────────────────────────────── */
-    lv_obj_t *on_btn = lv_btn_create(scr);
-    lv_obj_set_size(on_btn, 85, 55);
-    lv_obj_align(on_btn, LV_ALIGN_CENTER, 35, 125);
-    lv_obj_set_style_bg_color(on_btn, lv_color_hex(0x0d2a0d), 0);
-    lv_obj_set_style_radius(on_btn, 8, 0);
-    lv_obj_set_style_border_color(on_btn, C_GREEN, 0);
-    lv_obj_set_style_border_width(on_btn, 2, 0);
-    lv_obj_add_event_cb(on_btn, output_on_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *on_lbl = lv_label_create(on_btn);
-    lv_label_set_text(on_lbl, "OUT\nON");
-    lv_obj_set_style_text_color(on_lbl, C_GREEN, 0);
-    lv_obj_set_style_text_font(on_lbl, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_align(on_lbl, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_center(on_lbl);
+    /* ── Output toggle button ───────────────────────────────────────── */
+    s_out_status_lbl = lv_label_create(scr);
+    lv_label_set_text(s_out_status_lbl, "Output is OFF");
+    lv_obj_set_style_text_color(s_out_status_lbl, lv_color_hex(0xff3300), 0);
+    lv_obj_set_style_text_font(s_out_status_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_align(s_out_status_lbl, LV_ALIGN_CENTER, 85, 85);
 
-    /* ── Output OFF button ───────────────────────────────────────────── */
-    lv_obj_t *off_btn = lv_btn_create(scr);
-    lv_obj_set_size(off_btn, 85, 55);
-    lv_obj_align(off_btn, LV_ALIGN_CENTER, 135, 125);
-    lv_obj_set_style_bg_color(off_btn, lv_color_hex(0x2a0d0d), 0);
-    lv_obj_set_style_radius(off_btn, 8, 0);
-    lv_obj_set_style_border_color(off_btn, lv_color_hex(0xff3300), 0);
-    lv_obj_set_style_border_width(off_btn, 2, 0);
-    lv_obj_add_event_cb(off_btn, output_off_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *off_lbl = lv_label_create(off_btn);
-    lv_label_set_text(off_lbl, "OUT\nOFF");
-    lv_obj_set_style_text_color(off_lbl, lv_color_hex(0xff3300), 0);
-    lv_obj_set_style_text_font(off_lbl, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_align(off_lbl, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_center(off_lbl);
+    lv_obj_t *tog_btn = lv_btn_create(scr);
+    lv_obj_set_size(tog_btn, 120, 45);
+    lv_obj_align(tog_btn, LV_ALIGN_CENTER, 85, 130);
+    lv_obj_set_style_bg_color(tog_btn, lv_color_hex(0x0d2a0d), 0);
+    lv_obj_set_style_radius(tog_btn, 8, 0);
+    lv_obj_set_style_border_color(tog_btn, C_GREEN, 0);
+    lv_obj_set_style_border_width(tog_btn, 2, 0);
+    lv_obj_add_event_cb(tog_btn, output_toggle_cb, LV_EVENT_CLICKED, NULL);
+    s_out_btn_lbl = lv_label_create(tog_btn);
+    lv_label_set_text(s_out_btn_lbl, "Turn ON");
+    lv_obj_set_style_text_color(s_out_btn_lbl, C_GREEN, 0);
+    lv_obj_set_style_text_font(s_out_btn_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_center(s_out_btn_lbl);
 
     /* ── Mains Charge card (185×110, left side) ───────────────────────── */
     lv_obj_t *ccard = lv_obj_create(scr);
@@ -333,4 +299,16 @@ void screen_battery_set_chgv_last(int tenths_v)
 {
     if (s_chgv_last_lbl)
         lv_label_set_text_fmt(s_chgv_last_lbl, "Last: %d.%d V", tenths_v / 10, tenths_v % 10);
+}
+
+void screen_battery_set_output_state(int on)
+{
+    if (s_out_status_lbl)
+    {
+        lv_label_set_text(s_out_status_lbl, on ? "Output is ON" : "Output is OFF");
+        lv_obj_set_style_text_color(s_out_status_lbl,
+                                    on ? C_GREEN : lv_color_hex(0xff3300), 0);
+    }
+    if (s_out_btn_lbl)
+        lv_label_set_text(s_out_btn_lbl, on ? "Turn OFF" : "Turn ON");
 }
