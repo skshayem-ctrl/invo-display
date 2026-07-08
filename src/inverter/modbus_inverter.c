@@ -190,7 +190,7 @@ static void modbus_task(void *arg)
             s_pending_cmd = -1;
             mb_write_reg(REG_OUT_CTRL, cmd ? 1 : 0);
             ESP_LOGI(TAG, "Output %s", cmd ? "ON" : "OFF");
-            vTaskDelay(pdMS_TO_TICKS(4000));
+            vTaskDelay(pdMS_TO_TICKS(500));
         }
 
         /* Pending charge power setpoint */
@@ -224,7 +224,7 @@ static void modbus_task(void *arg)
         {
             ESP_LOGW(TAG, "Poll failed (rc1=%d rc2=%d)", rc1, rc2);
             s_valid = false;
-            vTaskDelay(pdMS_TO_TICKS(3000));
+            vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
 
@@ -259,7 +259,7 @@ static void modbus_task(void *arg)
         if ((out_hz > 0.0f && out_hz < 44.0f) || out_hz > 56.0f)
         {
             ESP_LOGW(TAG, "Bad out_hz %.2f — discard", out_hz);
-            vTaskDelay(pdMS_TO_TICKS(3000));
+            vTaskDelay(pdMS_TO_TICKS(1000));
             continue;
         }
 
@@ -315,7 +315,7 @@ static void modbus_task(void *arg)
                  out_v, out_hz, out_w, out_a, grid_v, grid_a, grid_hz, inv_t,
                  inv_on, is_bypassing, ac_chg, fault, op_st);
 
-        vTaskDelay(pdMS_TO_TICKS(3000));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
