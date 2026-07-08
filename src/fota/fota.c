@@ -206,7 +206,7 @@ static void fota_task(void *arg)
     /* Wait for any in-flight weather/AQI fetch to fully finish and DNS to recover.
      * AQI HTTP timeout is ~30s; blip cascade + DNS recovery adds ~15s on top. */
     for (int i = 0; i < 60 && !s_cancel; i++) vTaskDelay(pdMS_TO_TICKS(500));
-    if (s_cancel) { fota_active = false; vTaskDelete(NULL); return; }
+    if (s_cancel) { fota_active = false; s_state = FOTA_IDLE; vTaskDelete(NULL); return; }
 
     const char *local_ver = esp_app_get_description()->version;
 
@@ -241,7 +241,7 @@ static void fota_task(void *arg)
      * Wait for version.json TCP teardown retransmits to finish (exponential
      * backoff: 1.4s→3s→6s→12s) and DNS to fully recover before touching github.com. */
     for (int i = 0; i < 60 && !s_cancel; i++) vTaskDelay(pdMS_TO_TICKS(500));
-    if (s_cancel) { fota_active = false; vTaskDelete(NULL); return; }
+    if (s_cancel) { fota_active = false; s_state = FOTA_IDLE; vTaskDelete(NULL); return; }
 
     notify(FOTA_DOWNLOADING, 0, "Downloading...");
 
@@ -341,6 +341,7 @@ static void fota_task(void *arg)
 
     if (s_cancel) {
         fota_active = false;
+        s_state = FOTA_IDLE;
         vTaskDelete(NULL);
         return;
     }
@@ -367,7 +368,11 @@ void fota_start(fota_cb_t cb)
     s_cancel = false;
     s_cb    = cb;
     s_state = FOTA_IDLE;
-    xTaskCreate(fota_task, "fota", 16384, NULL, 2, NULL);
+    BaseType_t ret = xTaskCreate(fota_task, "fota", 20480, NULL, 2, NULL);
+    if (ret != pdPASS) {
+        ESP_LOGE(TAG, "fota_task create failed (%d) — heap too low?", (int)ret);
+        if (s_cb) s_cb(FOTA_ERROR, 0, "Task create failed");
+    }
 }
 
 fota_state_t fota_get_state(void)       { return s_state; }
