@@ -37,7 +37,7 @@ typedef struct
     /* inverter output */
     float out_v, out_hz, out_a;
     /* status flags */
-    int inv_on, bypassing, fault, ac_chg;
+    int inv_on, out_switch, bypassing, fault, ac_chg;
     /* weather */
     int wx_c, wx_feels_c, humidity, aqi;
     float wx_wind_kmh;
@@ -54,7 +54,7 @@ extern gd_t gd;
 typedef struct
 {
     lv_obj_t *scr_main, *scr_batt, *scr_solar, *scr_load, *scr_wx, *scr_sleep, *scr_wifi;
-    lv_obj_t *scr_settings, *scr_history, *scr_alerts;
+    lv_obj_t *scr_settings, *scr_settings_general, *scr_batt_settings, *scr_history, *scr_alerts;
     lv_obj_t *w_wifi;                                         /* main screen */
     lv_obj_t *w_wifi_bd, *w_wifi_sd, *w_wifi_ld, *w_wifi_wxd; /* detail screens */
     lv_obj_t *w_time, *w_date;
@@ -113,6 +113,8 @@ lv_obj_t *make_stat_card(lv_obj_t *scr, int w, int h, int ox, int oy,
 /* navigation callbacks */
 void go_load_cb(lv_event_t *e);
 void go_settings_cb(lv_event_t *e);
+void go_settings_general_cb(lv_event_t *e);
+void go_batt_settings_cb(lv_event_t *e);
 void go_history_cb(lv_event_t *e);
 void go_alerts_cb(lv_event_t *e);
 void swipe_back_cb(lv_event_t *e);
@@ -132,9 +134,11 @@ void data_tick_cb(lv_timer_t *t);
 /* screen builders */
 lv_obj_t *screen_main_create(void);
 lv_obj_t *screen_battery_create(void);
-void screen_battery_set_chg_last(int watts);
-void screen_battery_set_chgv_last(int tenths_v);
-void screen_battery_set_output_state(int on);
+lv_obj_t *screen_settings_general_create(void);
+lv_obj_t *screen_battery_settings_create(void);
+void screen_battery_settings_set_chg_last(int watts);
+void screen_battery_settings_set_chgv_last(int tenths_v);
+void screen_battery_set_output_state(int actual_on, int switch_on);
 lv_obj_t *screen_solar_create(void);
 lv_obj_t *screen_weather_create(void);
 lv_obj_t *screen_sleep_create(void);

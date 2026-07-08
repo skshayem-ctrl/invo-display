@@ -4,12 +4,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
-
-#ifdef ESP_PLATFORM
 #include "esp_random.h"
-#else
-#include "hal.h"
-#endif
 
 /* ── global state ──────────────────────────────────────────────── */
 
@@ -266,6 +261,16 @@ void go_settings_cb(lv_event_t *e)
     if (app.scr_settings)
         lv_screen_load_anim(app.scr_settings, LV_SCR_LOAD_ANIM_MOVE_LEFT, 250, 0, false);
 }
+void go_settings_general_cb(lv_event_t *e)
+{
+    if (app.scr_settings_general)
+        lv_screen_load_anim(app.scr_settings_general, LV_SCR_LOAD_ANIM_MOVE_LEFT, 250, 0, false);
+}
+void go_batt_settings_cb(lv_event_t *e)
+{
+    if (app.scr_batt_settings)
+        lv_screen_load_anim(app.scr_batt_settings, LV_SCR_LOAD_ANIM_MOVE_LEFT, 250, 0, false);
+}
 void go_history_cb(lv_event_t *e)
 {
     if (app.scr_history)
@@ -362,53 +367,6 @@ void clock_tick_cb(lv_timer_t *t)
 
 void data_tick_cb(lv_timer_t *t)
 {
-#ifndef ESP_PLATFORM
-    /* On Pi: pull all fields from HAL (invo_bridge shared mem) */
-    invo_data_t _d;
-    hal_data_get(&_d);
-    if (_d.batt_pct > 0)
-        gd.batt_pct = (int)_d.batt_pct;
-    if (_d.solar_kw > 0)
-        gd.solar_kw = _d.solar_kw;
-    if (_d.load_kw > 0)
-        gd.load_kw = _d.load_kw;
-    if (_d.batt_v > 0)
-    {
-        gd.voltage = (int)_d.batt_v;
-        gd.batt_v = _d.batt_v;
-    }
-    if (_d.batt_a != 0)
-    {
-        gd.current = _d.batt_a;
-        gd.batt_a = _d.batt_a;
-    }
-    if (_d.batt_temp > 0)
-        gd.batt_temp = _d.batt_temp;
-    if (_d.batt_backup_min > 0)
-    {
-        gd.backup_h = _d.batt_backup_min / 60;
-        gd.backup_m = _d.batt_backup_min % 60;
-    }
-    if (_d.solar_v > 0)
-        gd.pv_v = _d.solar_v;
-    if (_d.solar_a != 0)
-        gd.pv_a = _d.solar_a;
-    if (_d.grid_v > 0)
-        gd.grid_v = _d.grid_v;
-    if (_d.grid_hz > 0)
-        gd.grid_hz = _d.grid_hz;
-    if (_d.out_v > 0)
-        gd.out_v = _d.out_v;
-    if (_d.out_hz > 0)
-        gd.out_hz = _d.out_hz;
-    if (_d.out_a != 0)
-        gd.out_a = _d.out_a;
-    gd.inv_on = _d.inv_on;
-    gd.bypassing = _d.bypassing;
-    gd.fault = _d.fault;
-    gd.ac_chg = _d.ac_chg;
-#endif
-
     lv_color_t wifi_col = wifi_manager_connected() ? C_GREEN : C_GRAY;
     if (app.w_wifi)
         lv_obj_set_style_text_color(app.w_wifi, wifi_col, 0);
@@ -421,7 +379,6 @@ void data_tick_cb(lv_timer_t *t)
     if (app.w_wifi_wxd)
         lv_obj_set_style_text_color(app.w_wifi_wxd, wifi_col, 0);
 
-#ifdef ESP_PLATFORM
     if (!uart_batt_valid())
     {
         gd.solar_kw = 0.0f;
@@ -442,11 +399,6 @@ void data_tick_cb(lv_timer_t *t)
     gd.today_solar_kwh += gd.solar_kw * (2.0f / 3600.0f);
     gd.today_load_kwh += gd.load_kw * (2.0f / 3600.0f);
     bool batt_ok = uart_batt_valid();
-#else
-    gd.today_solar_kwh += gd.solar_kw * (2.0f / 3600.0f);
-    gd.today_load_kwh += gd.load_kw * (2.0f / 3600.0f);
-    bool batt_ok = (gd.batt_pct > 0);
-#endif
 
     bool pct_ok = batt_ok && gd.batt_pct > 0;
     lv_color_t arc_col = pct_ok ? (gd.batt_pct >= 50 ? C_GREEN : gd.batt_pct >= 20 ? C_AMBER
@@ -496,10 +448,10 @@ void data_tick_cb(lv_timer_t *t)
                                        gd.batt_temp)
                          : lv_label_set_text(app.w_bd_tmp, "--");
     if (gd.chg_set_w > 0)
-        screen_battery_set_chg_last(gd.chg_set_w);
+        screen_battery_settings_set_chg_last(gd.chg_set_w);
     if (gd.chgv_set_v > 0)
-        screen_battery_set_chgv_last(gd.chgv_set_v);
-    screen_battery_set_output_state(gd.inv_on);
+        screen_battery_settings_set_chgv_last(gd.chgv_set_v);
+    screen_battery_set_output_state(gd.inv_on, gd.out_switch);
     if (app.w_bd_bkp)
         pct_ok ? lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm",
                                        gd.backup_h, gd.backup_m)
