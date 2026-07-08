@@ -18,6 +18,7 @@
 volatile bool fota_active = false;
 
 static volatile fota_state_t s_state = FOTA_IDLE;
+static volatile bool s_cancel = false;
 static fota_cb_t s_cb;
 
 static void notify(fota_state_t state, int pct, const char *msg)
@@ -131,7 +132,7 @@ static esp_err_t ota_http_handler(esp_http_client_event_t *evt)
         break;
 
     case HTTP_EVENT_ON_DATA: {
-        if (ctx->error) return ESP_FAIL;
+        if (ctx->error || s_cancel) return ESP_FAIL;
 
         const uint8_t *src    = (const uint8_t *)evt->data;
         int            remain = evt->data_len;
@@ -204,7 +205,8 @@ static void fota_task(void *arg)
 
     /* Wait for any in-flight weather/AQI fetch to fully finish and DNS to recover.
      * AQI HTTP timeout is ~30s; blip cascade + DNS recovery adds ~15s on top. */
-    vTaskDelay(pdMS_TO_TICKS(30000));
+    for (int i = 0; i < 60 && !s_cancel; i++) vTaskDelay(pdMS_TO_TICKS(500));
+    if (s_cancel) { fota_active = false; vTaskDelete(NULL); return; }
 
     const char *local_ver = esp_app_get_description()->version;
 
@@ -238,7 +240,8 @@ static void fota_task(void *arg)
     /* Step 2: Newer version confirmed.
      * Wait for version.json TCP teardown retransmits to finish (exponential
      * backoff: 1.4s→3s→6s→12s) and DNS to fully recover before touching github.com. */
-    vTaskDelay(pdMS_TO_TICKS(30000));
+    for (int i = 0; i < 60 && !s_cancel; i++) vTaskDelay(pdMS_TO_TICKS(500));
+    if (s_cancel) { fota_active = false; vTaskDelete(NULL); return; }
 
     notify(FOTA_DOWNLOADING, 0, "Downloading...");
 
@@ -256,8 +259,8 @@ static void fota_task(void *arg)
             char rmsg[24];
             snprintf(rmsg, sizeof(rmsg), "Retry %d/5...", attempt);
             notify(FOTA_DOWNLOADING, 0, rmsg);
-            vTaskDelay(pdMS_TO_TICKS(30000));
-            if (!wifi_manager_connected()) continue;
+            for (int i = 0; i < 60 && !s_cancel; i++) vTaskDelay(pdMS_TO_TICKS(500));
+            if (s_cancel || !wifi_manager_connected()) continue;
         }
 
         const esp_partition_t *update_part = esp_ota_get_next_update_partition(NULL);
@@ -304,6 +307,7 @@ static void fota_task(void *arg)
         if (ctx.error || err != ESP_OK) {
             ESP_LOGE(TAG, "Download failed: %s ctx.error=%d", esp_err_to_name(err), ctx.error);
             esp_ota_abort(ota_handle);
+            if (s_cancel) break;
             continue;
         }
 
@@ -335,6 +339,12 @@ static void fota_task(void *arg)
 
     free(chunk_buf);
 
+    if (s_cancel) {
+        fota_active = false;
+        vTaskDelete(NULL);
+        return;
+    }
+
     if (ota_final != ESP_OK) {
         fota_active = false;
         notify(FOTA_ERROR, 0, "Download failed (5 retries)");
@@ -348,10 +358,13 @@ static void fota_task(void *arg)
     vTaskDelete(NULL);
 }
 
+void fota_cancel(void) { s_cancel = true; }
+
 void fota_start(fota_cb_t cb)
 {
     if (s_state == FOTA_CHECKING || s_state == FOTA_DOWNLOADING ||
         s_state == FOTA_VERIFYING) return;
+    s_cancel = false;
     s_cb    = cb;
     s_state = FOTA_IDLE;
     xTaskCreate(fota_task, "fota", 16384, NULL, 2, NULL);

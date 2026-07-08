@@ -33,6 +33,7 @@ static lv_obj_t * s_fota_msg;
 static lv_obj_t * s_fota_bar;
 static lv_obj_t * s_fota_bar_ind;
 static lv_obj_t * s_fota_close;
+static lv_obj_t * s_fota_cancel;
 static lv_obj_t * s_update_row;
 
 /* ── FOTA UI callback (called from fota_task — acquires LVGL lock) */
@@ -45,11 +46,14 @@ static void fota_ui_cb(fota_state_t state, int pct, const char * msg)
     /* progress bar */
     lv_obj_set_width(s_fota_bar_ind, (lv_coord_t)((float)lv_obj_get_width(s_fota_bar) * pct / 100.0f));
 
-    bool show_close = (state == FOTA_DONE || state == FOTA_UP_TO_DATE || state == FOTA_NO_WIFI || state == FOTA_ERROR);
-    if(show_close)
+    bool terminal = (state == FOTA_DONE || state == FOTA_UP_TO_DATE || state == FOTA_NO_WIFI || state == FOTA_ERROR);
+    if(terminal) {
         lv_obj_clear_flag(s_fota_close, LV_OBJ_FLAG_HIDDEN);
-    else
+        lv_obj_add_flag(s_fota_cancel, LV_OBJ_FLAG_HIDDEN);
+    } else {
         lv_obj_add_flag(s_fota_close, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(s_fota_cancel, LV_OBJ_FLAG_HIDDEN);
+    }
 
     lvgl_release();
 }
@@ -57,7 +61,14 @@ static void fota_ui_cb(fota_state_t state, int pct, const char * msg)
 static void fota_close_cb(lv_event_t * e)
 {
     lv_obj_add_flag(s_fota_panel, LV_OBJ_FLAG_HIDDEN);
-    /* re-enable the update row */
+    lv_obj_add_flag(s_update_row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_opa(s_update_row, LV_OPA_COVER, 0);
+}
+
+static void fota_cancel_cb(lv_event_t * e)
+{
+    fota_cancel();
+    lv_obj_add_flag(s_fota_panel, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_update_row, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_opa(s_update_row, LV_OPA_COVER, 0);
 }
@@ -72,6 +83,7 @@ static void check_update_cb(lv_event_t * e)
     lv_label_set_text(s_fota_msg, "Starting...");
     lv_obj_set_width(s_fota_bar_ind, 0);
     lv_obj_add_flag(s_fota_close, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_fota_cancel, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(s_fota_panel, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(s_fota_panel);
 
@@ -185,14 +197,11 @@ lv_obj_t * screen_settings_general_create(void)
         lv_obj_add_event_cb(sl, slider_block_gesture_cb, LV_EVENT_GESTURE, NULL);
     }
 
-    /* show actual running firmware version */
+    /* ── Check Update row (version shown on right instead of arrow) */
     char ver_str[24];
     snprintf(ver_str, sizeof(ver_str), "v%s", fota_current_version());
-    settings_row(scr, LV_SYMBOL_HOME, C_GREEN, "System", ver_str, false, NULL, 232);
-
-    /* ── Check Update row ──────────────────────────────────────── */
     s_update_row =
-        settings_row(scr, LV_SYMBOL_DOWNLOAD, C_BLUE, "Check Update", LV_SYMBOL_RIGHT, true, check_update_cb, 300);
+        settings_row(scr, LV_SYMBOL_DOWNLOAD, C_BLUE, "Check Update", ver_str, true, check_update_cb, 232);
 
     /* ── back button ────────────────────────────────────────────── */
     lv_obj_t * back = lv_btn_create(scr);
@@ -208,7 +217,7 @@ lv_obj_t * screen_settings_general_create(void)
     lv_obj_set_style_text_color(ba, C_WHITE, 0);
     lv_obj_set_style_text_font(ba, &lv_font_montserrat_16, 0);
     lv_obj_t * bbl = lv_label_create(brow);
-    lv_label_set_text(bbl, "Home");
+    lv_label_set_text(bbl, "Settings");
     lv_obj_set_style_text_color(bbl, C_WHITE, 0);
     lv_obj_set_style_text_font(bbl, &lv_font_montserrat_16, 0);
 
@@ -285,6 +294,22 @@ lv_obj_t * screen_settings_general_create(void)
     lv_obj_set_style_text_color(cl, C_WHITE, 0);
     lv_obj_set_style_text_font(cl, &lv_font_montserrat_14, 0);
     lv_obj_center(cl);
+
+    /* cancel button — visible while FOTA is active, hidden on completion */
+    s_fota_cancel = lv_btn_create(card);
+    lv_obj_set_size(s_fota_cancel, 120, 36);
+    lv_obj_align(s_fota_cancel, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(s_fota_cancel, lv_color_hex(0x2a0d0d), 0);
+    lv_obj_set_style_border_color(s_fota_cancel, lv_color_hex(0xff3300), 0);
+    lv_obj_set_style_border_width(s_fota_cancel, 1, 0);
+    lv_obj_set_style_radius(s_fota_cancel, 18, 0);
+    lv_obj_add_event_cb(s_fota_cancel, fota_cancel_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(s_fota_cancel, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_t * ccl = lv_label_create(s_fota_cancel);
+    lv_label_set_text(ccl, "Cancel");
+    lv_obj_set_style_text_color(ccl, lv_color_hex(0xff3300), 0);
+    lv_obj_set_style_text_font(ccl, &lv_font_montserrat_14, 0);
+    lv_obj_center(ccl);
 
     return scr;
 }

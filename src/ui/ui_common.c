@@ -456,6 +456,8 @@ void data_tick_cb(lv_timer_t *t)
         pct_ok ? lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm",
                                        gd.backup_h, gd.backup_m)
                : lv_label_set_text(app.w_bd_bkp, "--");
+    if (app.w_bd_grid_a)
+        lv_lbl_setf(app.w_bd_grid_a, "%.1f A", gd.grid_a);
     if (app.w_bd_grid_chg_w)
         gd.grid_chg_w > 0 ? lv_label_set_text_fmt(app.w_bd_grid_chg_w, "%d W", gd.grid_chg_w)
                           : lv_label_set_text(app.w_bd_grid_chg_w, "--");

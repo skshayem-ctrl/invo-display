@@ -21,5 +21,6 @@ typedef enum {
 typedef void (*fota_cb_t)(fota_state_t state, int progress_pct, const char *msg);
 
 void         fota_start(fota_cb_t cb);
+void         fota_cancel(void);
 fota_state_t fota_get_state(void);
 const char  *fota_current_version(void);

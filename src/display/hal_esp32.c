@@ -16,8 +16,6 @@
 #include "esp_lcd_mipi_dsi.h"
 #include "esp_ldo_regulator.h"
 #include "esp_lcd_touch_gt911.h"
-#include "nvs_flash.h"
-#include "nvs.h"
 
 static esp_lcd_panel_handle_t s_panel;
 static esp_lcd_touch_handle_t s_touch;
@@ -223,68 +221,3 @@ void hal_brightness_set(int percent)
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
 }
 
-int hal_brightness_get(void)
-{
-    uint32_t duty = ledc_get_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
-    return 100 - (int)((duty * 100) / 1023);
-}
-
-/* ── Live inverter data ───────────────────────────────────────────────────── */
-
-#include "ui_common.h"
-
-void hal_data_get(invo_data_t *out)
-{
-    out->batt_pct        = (float)gd.batt_pct;
-    out->batt_v          = gd.batt_v;
-    out->batt_a          = gd.batt_a;
-    out->batt_chg_kw     = gd.chg_kw;
-    out->batt_temp       = gd.batt_temp;
-    out->batt_backup_min = gd.backup_h * 60 + gd.backup_m;
-    out->solar_kw        = gd.solar_kw;
-    out->solar_v         = gd.pv_v;
-    out->solar_a         = gd.pv_a;
-    out->grid_v          = gd.grid_v;
-    out->grid_hz         = gd.grid_hz;
-    out->load_kw         = gd.load_kw;
-    out->out_v           = gd.out_v;
-    out->out_hz          = gd.out_hz;
-    out->out_a           = gd.out_a;
-    out->fault           = gd.fault;
-    out->bypassing       = gd.bypassing;
-    out->inv_on          = gd.inv_on;
-    out->ac_chg          = gd.ac_chg;
-}
-
-/* ── FOTA ─────────────────────────────────────────────────────────────────── */
-
-#include "fota.h"
-
-void hal_fota_trigger(void)
-{
-    fota_start(NULL);
-}
-
-/* ── NVS key-value storage ────────────────────────────────────────────────── */
-
-#define NVS_NAMESPACE "invo"
-
-int hal_kv_set(const char *key, const char *val)
-{
-    nvs_handle_t h;
-    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return -1;
-    esp_err_t err = nvs_set_str(h, key, val);
-    nvs_commit(h);
-    nvs_close(h);
-    return (err == ESP_OK) ? 0 : -1;
-}
-
-int hal_kv_get(const char *key, char *out, int out_len)
-{
-    nvs_handle_t h;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return -1;
-    size_t len = (size_t)out_len;
-    esp_err_t err = nvs_get_str(h, key, out, &len);
-    nvs_close(h);
-    return (err == ESP_OK) ? 0 : -1;
-}
