@@ -39,37 +39,65 @@ void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     esp_lcd_touch_point_data_t point;
     uint8_t count = 0;
     esp_lcd_touch_read_data(touch);
-    if (esp_lcd_touch_get_data(touch, &point, &count, 1) == ESP_OK && count > 0) {
+    if (esp_lcd_touch_get_data(touch, &point, &count, 1) == ESP_OK && count > 0)
+    {
         data->point.x = point.x;
         data->point.y = point.y;
-        data->state   = LV_INDEV_STATE_PRESSED;
-    } else {
+        data->state = LV_INDEV_STATE_PRESSED;
+    }
+    else
+    {
         data->state = LV_INDEV_STATE_RELEASED;
     }
 }
 
 void lvgl_task(void *arg)
 {
-    while (1) {
+    while (1)
+    {
         _lock_acquire(&lvgl_api_lock);
         uint32_t delay_ms = lv_timer_handler();
         _lock_release(&lvgl_api_lock);
 
         /* Guard: highest case number must equal STARTUP_PHASES in hw_config.h */
-        _Static_assert(STARTUP_PHASES == 8,
-            "STARTUP_PHASES in hw_config.h must match the highest case in this switch");
+        _Static_assert(STARTUP_PHASES == 10,
+                       "STARTUP_PHASES in hw_config.h must match the highest case in this switch");
 
-        if (app.startup_phase > 0) {
+        if (app.startup_phase > 0)
+        {
             _lock_acquire(&lvgl_api_lock);
-            switch (app.startup_phase) {
-            case 8: app.scr_settings = screen_settings_create(); break;
-            case 7: app.scr_history  = screen_history_create();  break;
-            case 6: app.scr_alerts   = screen_alerts_create();   break;
-            case 5: app.scr_batt     = screen_battery_create();  break;
-            case 4: app.scr_solar = screen_solar_create();   break;
-            case 3: app.scr_load  = screen_load_create();    break;
-            case 2: app.scr_wx    = screen_weather_create(); break;
-            case 1: app.scr_sleep = screen_sleep_create();   break;
+            switch (app.startup_phase)
+            {
+            case 10:
+                app.scr_settings_general = screen_settings_general_create();
+                break;
+            case 9:
+                app.scr_batt_settings = screen_battery_settings_create();
+                break;
+            case 8:
+                app.scr_settings = screen_settings_create();
+                break;
+            case 7:
+                app.scr_history = screen_history_create();
+                break;
+            case 6:
+                app.scr_alerts = screen_alerts_create();
+                break;
+            case 5:
+                app.scr_batt = screen_battery_create();
+                break;
+            case 4:
+                app.scr_solar = screen_solar_create();
+                break;
+            case 3:
+                app.scr_load = screen_load_create();
+                break;
+            case 2:
+                app.scr_wx = screen_weather_create();
+                break;
+            case 1:
+                app.scr_sleep = screen_sleep_create();
+                break;
             }
             app.startup_phase--;
             _lock_release(&lvgl_api_lock);

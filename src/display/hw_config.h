@@ -21,7 +21,7 @@
 #define TOUCH_I2C_SCL  8
 #define TOUCH_RST_GPIO 23
 #define TOUCH_INT_GPIO (-1)
-#define STARTUP_PHASES 8
+#define STARTUP_PHASES 10
 
 /* RS485 / Modbus RTU — UART1 on J8 dedicated TXD/RXD pins */
 #define MB_UART_NUM    UART_NUM_1
