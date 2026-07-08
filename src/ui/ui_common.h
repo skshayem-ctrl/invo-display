@@ -28,7 +28,7 @@ typedef struct
     /* solar panel */
     float pv_v, pv_a;
     /* AC grid input */
-    float grid_v, grid_hz;
+    float grid_v, grid_hz, grid_a;
     int grid_chg_w;
     int chg_set_w;  /* charge power setpoint read back from inverter */
     int chgv_set_v; /* charge voltage setpoint ×0.1V read back from inverter */
@@ -63,7 +63,7 @@ typedef struct
     lv_obj_t *w_solar_val, *w_load_val;
     lv_obj_t *w_warn_ring, *w_warn_dlg;
     /* battery detail */
-    lv_obj_t *w_bd_pct, *w_bd_chg, *w_bd_bkp, *w_bd_full, *w_bd_tmp;
+    lv_obj_t *w_bd_pct, *w_bd_chg, *w_bd_bkp, *w_bd_full, *w_bd_tmp, *w_bd_grid_a;
     lv_obj_t *w_bd_batt_v, *w_bd_batt_a;
     lv_obj_t *w_bd_inv_on, *w_bd_ac_chg, *w_bd_bypass, *w_bd_fault;
     lv_obj_t *w_bd_grid_chg_w; /* mains charge W — live reading */

@@ -39,8 +39,8 @@
 #define REG_OUT_CTRL 4049
 #define REG_CHG_CTRL 4054
 #define REG_CHG_VOLT 4056 /* Battery charge voltage setpoint ×0.1V */
-#define REG_B3_START 4054
-#define REG_B3_COUNT 3 /* 4054: charge power setpoint W */
+#define REG_B3_START 4049
+#define REG_B3_COUNT 8 /* 4049–4056 */
 
 static volatile bool s_valid = false;
 static volatile int s_pending_cmd = -1;
@@ -236,13 +236,16 @@ static void modbus_task(void *arg)
         float batt_a = s16(r1[8]) * 0.1f;
         int batt_w = s16(r1[9]);
         float raw_grid_v = r1[11] * 0.1f;
+        float grid_a = s16(r1[12]) * 0.1f; /* 4029 grid current ×0.1A */
         int grid_chg_w = s16(r1[14]); /* 4031 mains charge power W */
         float grid_hz = r1[15] * 0.01f;
         float inv_out_v = r2[0] * 0.1f;
         float out_a = s16(r2[1]) * 0.01f;
         int out_w = s16(r2[2]);
-        int chg_set_w = (rc3 >= 0) ? (int)r3[0] : 0;
-        int chgv_set_v = (rc3 >= 0) ? (int)r3[2] : 0;
+        int out_switch = (rc3 >= 0) ? (int)r3[0] : 0; /* 4049 output switch */
+        int chg_set_w = (rc3 >= 0) ? (int)r3[5] : 0;  /* 4054 charge power W */
+        int chgv_set_v = (rc3 >= 0) ? (int)r3[7] : 0; /* 4056 charge voltage ×0.1V */
+
         float out_hz = r2[3] * 0.01f;
         uint16_t op_st = r2[4];
         float inv_t = s16(r2[7]) * 0.1f;
@@ -281,6 +284,7 @@ static void modbus_task(void *arg)
         gd.batt_pct = 0; /* populated from BMS later */
         gd.batt_v = batt_ok ? batt_v : 0.0f;
         gd.batt_a = batt_a;
+        gd.out_switch = out_switch;
         gd.chg_kw = (float)batt_w / 1000.0f;
         gd.chg_set_w = chg_set_w;
         gd.chgv_set_v = chgv_set_v;
@@ -289,6 +293,7 @@ static void modbus_task(void *arg)
         gd.backup_m = 0;
         gd.grid_v = grid_v;
         gd.grid_hz = grid_hz;
+        gd.grid_a = grid_a;
         gd.grid_chg_w = grid_chg_w;
         gd.out_v = out_v;
         gd.out_hz = out_hz;
@@ -304,10 +309,10 @@ static void modbus_task(void *arg)
 
         ESP_LOGI(TAG,
                  "pv=%.1fV/%.1fA/%dW batt=%.1fV/%.1fA "
-                 "out=%.1fV/%.2fHz/%dW/%.1fA grid=%.1fV/%.2fHz temp=%.1fC "
+                 "out=%.1fV/%.2fHz/%dW/%.1fA grid=%.1fV/%.1fA/%.2fHz temp=%.1fC "
                  "inv=%d bypass=%d ac_chg=%d fault=%d op_st=0x%04X",
                  pv_v, pv_a, pv_w, batt_v, batt_a,
-                 out_v, out_hz, out_w, out_a, grid_v, grid_hz, inv_t,
+                 out_v, out_hz, out_w, out_a, grid_v, grid_a, grid_hz, inv_t,
                  inv_on, is_bypassing, ac_chg, fault, op_st);
 
         vTaskDelay(pdMS_TO_TICKS(3000));
