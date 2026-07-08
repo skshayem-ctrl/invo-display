@@ -134,6 +134,7 @@ lv_obj_t *screen_main_create(void);
 lv_obj_t *screen_battery_create(void);
 void screen_battery_set_chg_last(int watts);
 void screen_battery_set_chgv_last(int tenths_v);
+void screen_battery_set_output_state(int on);
 lv_obj_t *screen_solar_create(void);
 lv_obj_t *screen_weather_create(void);
 lv_obj_t *screen_sleep_create(void);
