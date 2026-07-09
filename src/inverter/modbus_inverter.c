@@ -281,7 +281,7 @@ static void modbus_task(void *arg)
         gd.pv_v = pv_v > 0.0f ? pv_v : 0.0f;
         gd.pv_a = pv_a > 0.0f ? pv_a : 0.0f;
         gd.load_kw = out_w > 20 ? (float)out_w / 1000.0f : 0.0f;
-        gd.batt_pct = 0; /* populated from BMS later */
+        /* gd.batt_pct owned by BMS task */
         gd.batt_v = batt_ok ? batt_v : 0.0f;
         gd.batt_a = batt_a;
         gd.out_switch = out_switch;

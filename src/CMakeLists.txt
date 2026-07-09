@@ -24,6 +24,8 @@ idf_component_register(
     # Inverter / UART
     "${CMAKE_SOURCE_DIR}/src/inverter/modbus_inverter.c"
     "${CMAKE_SOURCE_DIR}/src/inverter/uart_input.c"
+    # BMS
+    "${CMAKE_SOURCE_DIR}/src/bms/daly_bms.c"
     # FOTA
     "${CMAKE_SOURCE_DIR}/src/fota/fota.c"
     # Weather
@@ -34,6 +36,7 @@ idf_component_register(
     "${CMAKE_SOURCE_DIR}/src/ui"
     "${CMAKE_SOURCE_DIR}/src/wifi"
     "${CMAKE_SOURCE_DIR}/src/inverter"
+    "${CMAKE_SOURCE_DIR}/src/bms"
     "${CMAKE_SOURCE_DIR}/src/fota"
     "${CMAKE_SOURCE_DIR}/src/weather"
     REQUIRES

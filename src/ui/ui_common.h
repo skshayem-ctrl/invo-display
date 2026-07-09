@@ -36,6 +36,11 @@ typedef struct
     float batt_v, batt_a;
     /* inverter output */
     float out_v, out_hz, out_a;
+    /* BMS data */
+    float bms_cell_min, bms_cell_max, bms_cell_diff; /* V, V, mV */
+    float bms_temp;   /* °C pack temperature */
+    int   bms_cycles; /* charge cycle count */
+    int   bms_valid;  /* 1 when BMS data is fresh */
     /* status flags */
     int inv_on, out_switch, bypassing, fault, ac_chg;
     /* weather */

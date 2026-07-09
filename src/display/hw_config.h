@@ -30,3 +30,10 @@
 #define MB_UART_DE     22  /* direction control → module EN (HIGH=TX, LOW=RX) */
 #define MB_BAUD        9600
 
+/* DALY BMS RS485 — UART2 */
+#define BMS_UART_NUM   UART_NUM_2
+#define BMS_UART_TX    4
+#define BMS_UART_RX    5
+#define BMS_UART_DE    3
+#define BMS_BAUD       9600
+
