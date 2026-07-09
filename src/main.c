@@ -9,6 +9,7 @@
 #include "wifi_manager.h"
 #include "weather_service.h"
 #include "uart_input.h"
+#include "daly_bms.h"
 
 void app_main(void)
 {
@@ -31,6 +32,7 @@ void app_main(void)
 
     weather_service_start();
     uart_input_start();
+    daly_bms_start();
 
     /* Detail screens are pre-built in background by lvgl_task */
     app.startup_phase = STARTUP_PHASES;

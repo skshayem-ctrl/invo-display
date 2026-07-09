@@ -400,7 +400,7 @@ void data_tick_cb(lv_timer_t *t)
     gd.today_load_kwh += gd.load_kw * (2.0f / 3600.0f);
     bool batt_ok = uart_batt_valid();
 
-    bool pct_ok = batt_ok && gd.batt_pct > 0;
+    bool pct_ok = gd.bms_valid && gd.batt_pct > 0;
     lv_color_t arc_col = pct_ok ? (gd.batt_pct >= 50 ? C_GREEN : gd.batt_pct >= 20 ? C_AMBER
                                                                                    : C_RED)
                                 : C_GRAY;
