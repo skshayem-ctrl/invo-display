@@ -230,14 +230,14 @@ static void modbus_task(void *arg)
 
         /* ── Decode ───────────────────────────────────────────── */
         float pv_v = r1[0] * 0.1f;
-        float pv_a = s16(r1[1]) * 0.1f;
+        float pv_a = s16(r1[1]) * 0.01f;
         int pv_w = s16(r1[2]);
         float batt_v = r1[7] * 0.1f;
-        float batt_a = s16(r1[8]) * 0.1f;
+        float batt_a = s16(r1[8]) * 0.01f;
         int batt_w = s16(r1[9]);
         float raw_grid_v = r1[11] * 0.1f;
-        float grid_a = s16(r1[12]) * 0.1f; /* 4029 grid current ×0.1A */
-        int grid_chg_w = s16(r1[14]); /* 4031 mains charge power W */
+        float grid_a = s16(r1[12]) * 0.01f; /* 4029 grid current ×0.1A */
+        int grid_chg_w = s16(r1[14]);       /* 4031 mains charge power W */
         float grid_hz = r1[15] * 0.01f;
         float inv_out_v = r2[0] * 0.1f;
         float out_a = s16(r2[1]) * 0.01f;
@@ -264,11 +264,12 @@ static void modbus_task(void *arg)
         }
 
         /* Bad grid_hz means AC is gone — zero grid data, keep rest */
-        if ((grid_hz > 0.0f && grid_hz < 44.0f) || grid_hz > 56.0f)
+        if (grid_hz < 44.0f || grid_hz > 56.0f)
         {
             ESP_LOGW(TAG, "Bad grid_hz %.2f — grid data zeroed", grid_hz);
             grid_hz = 0.0f;
             raw_grid_v = 0.0f;
+            grid_a = 0.0f;
         }
 
         int batt_ok = (batt_v >= 28.8f && batt_v <= 57.6f);
@@ -283,7 +284,7 @@ static void modbus_task(void *arg)
         gd.load_kw = out_w > 20 ? (float)out_w / 1000.0f : 0.0f;
         /* gd.batt_pct owned by BMS task */
         gd.batt_v = batt_ok ? batt_v : 0.0f;
-        gd.batt_a = batt_a;
+        gd.batt_a = batt_ok ? batt_a : 0.0f;
         gd.out_switch = out_switch;
         gd.chg_kw = (float)batt_w / 1000.0f;
         gd.chg_set_w = chg_set_w;
