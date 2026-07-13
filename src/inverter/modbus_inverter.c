@@ -84,8 +84,6 @@ static void de_rx(void)
 
 static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
 {
-    xSemaphoreTake(rs485_mutex, portMAX_DELAY);
-
     uint8_t req[8];
     req[0] = MB_SLAVE;
     req[1] = 0x03;
@@ -109,39 +107,30 @@ static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
     if (got < expected)
     {
         ESP_LOGW(TAG, "RX timeout: got %d/%d (reg %u)", got, expected, start);
-        xSemaphoreGive(rs485_mutex);
         return -1;
     }
 
     if (resp[1] & 0x80)
     {
         ESP_LOGW(TAG, "Modbus exc 0x%02X", resp[2]);
-        xSemaphoreGive(rs485_mutex);
         return -2;
     }
     if (resp[2] != count * 2)
-    {
-        xSemaphoreGive(rs485_mutex);
         return -3;
-    }
     uint16_t resp_crc = (uint16_t)resp[expected - 2] | ((uint16_t)resp[expected - 1] << 8);
     if (resp_crc != crc16(resp, expected - 2))
     {
         ESP_LOGW(TAG, "CRC fail");
-        xSemaphoreGive(rs485_mutex);
         return -4;
     }
 
     for (int i = 0; i < count; i++)
         out[i] = ((uint16_t)resp[3 + i * 2] << 8) | resp[4 + i * 2];
-    xSemaphoreGive(rs485_mutex);
     return count;
 }
 
 static void mb_write_reg(uint16_t addr, uint16_t value)
 {
-    xSemaphoreTake(rs485_mutex, portMAX_DELAY);
-
     uint8_t req[8];
     req[0] = MB_SLAVE;
     req[1] = 0x06;
@@ -164,34 +153,14 @@ static void mb_write_reg(uint16_t addr, uint16_t value)
         ESP_LOGI(TAG, "Write ACK %04X=%u", addr, value);
     else
         ESP_LOGW(TAG, "Write NACK addr=%04X (got %d/8)", addr, got);
-
-    xSemaphoreGive(rs485_mutex);
 }
 
 /* ── Main poll task ──────────────────────────────────────────────────── */
 
 static void modbus_task(void *arg)
 {
-    ESP_LOGI(TAG, "Modbus RTU polling started (UART%d TX=%d RX=%d DE=%d) [v2-15ms]",
+    ESP_LOGI(TAG, "Modbus RTU polling started (UART%d TX=%d RX=%d DE=%d)",
              MB_UART_NUM, MB_UART_TX, MB_UART_RX, MB_UART_DE);
-
-    /* Passive sniff: 20s listen-only to verify receiver is alive.
-     * Run Python USB dongle script during this window. */
-    ESP_LOGI(TAG, "=== PASSIVE SNIFF: run Python dongle now, watching for 20s ===");
-    gpio_set_level(MB_UART_DE, 0);
-    {
-        uint8_t sniff[128];
-        int n = uart_read_bytes(MB_UART_NUM, sniff, sizeof(sniff), pdMS_TO_TICKS(20000));
-        if (n > 0)
-        {
-            ESP_LOGI(TAG, "SNIFF got %d bytes:", n);
-            esp_log_buffer_hex(TAG, sniff, n);
-        }
-        else
-        {
-            ESP_LOGW(TAG, "SNIFF: 0 bytes in 20s — receiver likely dead");
-        }
-    }
 
     while (1)
     {
@@ -200,7 +169,9 @@ static void modbus_task(void *arg)
         if (cmd >= 0)
         {
             s_pending_cmd = -1;
+            xSemaphoreTake(rs485_mutex, portMAX_DELAY);
             mb_write_reg(REG_OUT_CTRL, cmd ? 1 : 0);
+            xSemaphoreGive(rs485_mutex);
             ESP_LOGI(TAG, "Output %s", cmd ? "ON" : "OFF");
             vTaskDelay(pdMS_TO_TICKS(500));
         }
@@ -210,7 +181,9 @@ static void modbus_task(void *arg)
         if (chg >= 0)
         {
             s_pending_chg_w = -1;
+            xSemaphoreTake(rs485_mutex, portMAX_DELAY);
             mb_write_reg(REG_CHG_CTRL, (uint16_t)chg);
+            xSemaphoreGive(rs485_mutex);
             ESP_LOGI(TAG, "Charge W set → %d W", chg);
         }
 
@@ -219,18 +192,21 @@ static void modbus_task(void *arg)
         if (chgv >= 0)
         {
             s_pending_chg_v = -1;
+            xSemaphoreTake(rs485_mutex, portMAX_DELAY);
             mb_write_reg(REG_CHG_VOLT, (uint16_t)chgv);
+            xSemaphoreGive(rs485_mutex);
             ESP_LOGI(TAG, "Charge V set → %.1f V", chgv * 0.1f);
         }
 
-        /* ── Read two register blocks ─────────────────────────── */
-        uint16_t r1[REG_B1_COUNT], r2[REG_B2_COUNT];
+        /* ── Read all register blocks under one mutex hold ────── */
+        uint16_t r1[REG_B1_COUNT], r2[REG_B2_COUNT], r3[REG_B3_COUNT];
+        xSemaphoreTake(rs485_mutex, portMAX_DELAY);
         int rc1 = mb_read_regs(REG_B1_START, REG_B1_COUNT, r1);
         vTaskDelay(pdMS_TO_TICKS(50));
         int rc2 = mb_read_regs(REG_B2_START, REG_B2_COUNT, r2);
         vTaskDelay(pdMS_TO_TICKS(50));
-        uint16_t r3[REG_B3_COUNT];
         int rc3 = mb_read_regs(REG_B3_START, REG_B3_COUNT, r3);
+        xSemaphoreGive(rs485_mutex);
 
         if (rc1 < 0 || rc2 < 0)
         {
