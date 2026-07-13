@@ -22,6 +22,7 @@ idf_component_register(
     # WiFi
     "${CMAKE_SOURCE_DIR}/src/wifi/wifi_manager.c"
     # Inverter / UART
+    "${CMAKE_SOURCE_DIR}/src/inverter/rs485_bus.c"
     "${CMAKE_SOURCE_DIR}/src/inverter/modbus_inverter.c"
     "${CMAKE_SOURCE_DIR}/src/inverter/uart_input.c"
     # BMS
