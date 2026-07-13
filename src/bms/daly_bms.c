@@ -89,17 +89,19 @@ static void bms_task(void *arg)
         int cycles = 0;
         float temp = 0;
 
-        /* Hold mutex for the entire poll cycle — prevents modbus from
-         * interleaving between commands and leaving stale bytes in the buffer */
         xSemaphoreTake(rs485_mutex, portMAX_DELAY);
 
-        /* 0x90 — SOC, pack voltage, current */
-        if (daly_cmd(0x90, d)) {
-            pack_v = (uint16_t)(d[0] << 8 | d[1]) * 0.1f;
-            int16_t raw_a = (int16_t)((uint16_t)(d[4] << 8 | d[5]) - 30000);
-            pack_a = raw_a * 0.1f;
-            soc    = (uint16_t)(d[6] << 8 | d[7]) * 0.1f;
+        /* 0x90 — SOC, pack voltage, current (critical — bail early if it fails) */
+        if (!daly_cmd(0x90, d)) {
+            xSemaphoreGive(rs485_mutex);
+            ESP_LOGI(TAG, "0x90 failed — keeping last display values");
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
         }
+        pack_v = (uint16_t)(d[0] << 8 | d[1]) * 0.1f;
+        int16_t raw_a = (int16_t)((uint16_t)(d[4] << 8 | d[5]) - 30000);
+        pack_a = raw_a * 0.1f;
+        soc    = (uint16_t)(d[6] << 8 | d[7]) * 0.1f;
         vTaskDelay(pdMS_TO_TICKS(50));
 
         /* 0x91 — min/max cell voltage */
@@ -118,7 +120,6 @@ static void bms_task(void *arg)
 
         /* 0x96 — temperatures (raw - 40 = °C, 0 = unused sensor) */
         if (daly_cmd(0x96, d)) {
-            /* d[0] = frame index, d[1..7] = sensor values */
             float max_t = -40.0f;
             for (int i = 1; i < 8; i++) {
                 if (d[i] == 0 || d[i] == 0xFF) continue;
@@ -130,25 +131,19 @@ static void bms_task(void *arg)
 
         xSemaphoreGive(rs485_mutex);
 
-        if (pack_v > 0) {
-            lvgl_acquire();
-            gd.batt_pct      = (int)soc;
-            gd.bms_cell_min  = cell_min;
-            gd.bms_cell_max  = cell_max;
-            gd.bms_cell_diff = cell_diff;
-            gd.bms_temp      = temp;
-            gd.bms_cycles    = cycles;
-            gd.bms_valid     = 1;
-            lvgl_release();
+        /* Update display — only reached when 0x90 succeeded */
+        lvgl_acquire();
+        gd.batt_pct      = (int)soc;
+        gd.bms_cell_min  = cell_min;
+        gd.bms_cell_max  = cell_max;
+        gd.bms_cell_diff = cell_diff;
+        gd.bms_temp      = temp;
+        gd.bms_cycles    = cycles;
+        gd.bms_valid     = 1;
+        lvgl_release();
 
-            ESP_LOGI(TAG, "soc=%.1f%% v=%.1fV a=%.1fA cell=%.3f-%.3fV(%.0fmV) temp=%.1fC cyc=%d",
-                     soc, pack_v, pack_a, cell_min, cell_max, cell_diff, temp, cycles);
-        } else {
-            ESP_LOGI(TAG, "bms_valid → 0 (0x90 timed out or pack_v=0)");
-            lvgl_acquire();
-            gd.bms_valid = 0;
-            lvgl_release();
-        }
+        ESP_LOGI(TAG, "soc=%.1f%% v=%.1fV a=%.1fA cell=%.3f-%.3fV(%.0fmV) temp=%.1fC cyc=%d",
+                 soc, pack_v, pack_a, cell_min, cell_max, cell_diff, temp, cycles);
 
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
