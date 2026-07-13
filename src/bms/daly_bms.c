@@ -1,14 +1,8 @@
 /*
  * daly_bms.c — DALY BMS RS485 driver (9600 8N1, address 0x40)
  *
- * ESP32 → RS485 module (TTL side):
- *   GPIO4  (BMS_UART_TX) → Module RXD
- *   GPIO5  (BMS_UART_RX) ← Module TXD
- *   GPIO3  (BMS_UART_DE) → Module EN  (HIGH=transmit, LOW=receive)
- *
- * RS485 module → DALY BMS CAN/485 port:
- *   Module A → BMS A
- *   Module B → BMS B
+ * Shared RS485 bus with inverter (UART1, GPIO37/38/22).
+ * BMS A/B wires must be connected in parallel with inverter RS485 A/B.
  *
  * Protocol (half-duplex, big-endian):
  *   Request:  A5 40 {cmd} 08 00*8 {crc}   (13 bytes)
@@ -48,12 +42,10 @@ static uint8_t daly_crc(const uint8_t *data, int len)
     return crc;
 }
 
-/* Send one command, receive one 13-byte response.
+/* Send one command and receive one 13-byte response — mutex must already be held.
  * Returns true and fills resp_data[8] on success. */
-static bool daly_send_recv(uint8_t cmd, uint8_t *resp_data)
+static bool daly_cmd(uint8_t cmd, uint8_t *resp_data)
 {
-    xSemaphoreTake(rs485_mutex, portMAX_DELAY);
-
     uint8_t req[13] = {0xA5, BMS_ADDR, cmd, 0x08, 0,0,0,0,0,0,0,0, 0};
     req[12] = daly_crc(req, 12);
 
@@ -64,24 +56,22 @@ static bool daly_send_recv(uint8_t cmd, uint8_t *resp_data)
     de_rx();
 
     uint8_t resp[13];
-    int got = uart_read_bytes(BMS_UART_NUM, resp, 13, pdMS_TO_TICKS(500));
+    int got = uart_read_bytes(BMS_UART_NUM, resp, 13, pdMS_TO_TICKS(200));
     if (got < 13) {
-        ESP_LOGD(TAG, "cmd 0x%02X timeout (got %d/13)", cmd, got);
-        xSemaphoreGive(rs485_mutex);
+        ESP_LOGI(TAG, "cmd 0x%02X timeout (got %d/13 bytes)", cmd, got);
         return false;
     }
     if (resp[0] != 0xA5 || resp[1] != 0x01 || resp[2] != cmd) {
-        ESP_LOGW(TAG, "cmd 0x%02X bad header: %02X %02X %02X", cmd, resp[0], resp[1], resp[2]);
-        xSemaphoreGive(rs485_mutex);
+        ESP_LOGW(TAG, "cmd 0x%02X bad header: %02X %02X %02X (expected A5 01 %02X)",
+                 cmd, resp[0], resp[1], resp[2], cmd);
         return false;
     }
     if (daly_crc(resp, 12) != resp[12]) {
-        ESP_LOGW(TAG, "cmd 0x%02X CRC fail", cmd);
-        xSemaphoreGive(rs485_mutex);
+        ESP_LOGW(TAG, "cmd 0x%02X CRC fail (got 0x%02X want 0x%02X)",
+                 cmd, resp[12], daly_crc(resp, 12));
         return false;
     }
     memcpy(resp_data, resp + 4, 8);
-    xSemaphoreGive(rs485_mutex);
     return true;
 }
 
@@ -94,10 +84,17 @@ static void bms_task(void *arg)
 
     while (1) {
         uint8_t d[8];
+        float soc = 0, pack_v = 0, pack_a = 0;
+        float cell_max = 0, cell_min = 0, cell_diff = 0;
+        int cycles = 0;
+        float temp = 0;
+
+        /* Hold mutex for the entire poll cycle — prevents modbus from
+         * interleaving between commands and leaving stale bytes in the buffer */
+        xSemaphoreTake(rs485_mutex, portMAX_DELAY);
 
         /* 0x90 — SOC, pack voltage, current */
-        float soc = 0, pack_v = 0, pack_a = 0;
-        if (daly_send_recv(0x90, d)) {
+        if (daly_cmd(0x90, d)) {
             pack_v = (uint16_t)(d[0] << 8 | d[1]) * 0.1f;
             int16_t raw_a = (int16_t)((uint16_t)(d[4] << 8 | d[5]) - 30000);
             pack_a = raw_a * 0.1f;
@@ -106,8 +103,7 @@ static void bms_task(void *arg)
         vTaskDelay(pdMS_TO_TICKS(50));
 
         /* 0x91 — min/max cell voltage */
-        float cell_max = 0, cell_min = 0, cell_diff = 0;
-        if (daly_send_recv(0x91, d)) {
+        if (daly_cmd(0x91, d)) {
             cell_max  = (uint16_t)(d[0] << 8 | d[1]) * 0.001f;
             cell_min  = (uint16_t)(d[3] << 8 | d[4]) * 0.001f;
             cell_diff = (cell_max - cell_min) * 1000.0f;
@@ -115,27 +111,26 @@ static void bms_task(void *arg)
         vTaskDelay(pdMS_TO_TICKS(50));
 
         /* 0x94 — cycle count */
-        int cycles = 0;
-        if (daly_send_recv(0x94, d)) {
+        if (daly_cmd(0x94, d)) {
             cycles = (uint16_t)(d[5] << 8 | d[6]);
         }
         vTaskDelay(pdMS_TO_TICKS(50));
 
         /* 0x96 — temperatures (raw - 40 = °C, 0 = unused sensor) */
-        float temp = 0;
-        if (daly_send_recv(0x96, d)) {
+        if (daly_cmd(0x96, d)) {
             /* d[0] = frame index, d[1..7] = sensor values */
             float max_t = -40.0f;
             for (int i = 1; i < 8; i++) {
-                if (d[i] == 0 || d[i] == 0xFF) continue; /* unused sensor slot */
+                if (d[i] == 0 || d[i] == 0xFF) continue;
                 float t = (float)d[i] - 40.0f;
                 if (t > max_t) max_t = t;
             }
             temp = max_t > -40.0f ? max_t : 0.0f;
         }
 
+        xSemaphoreGive(rs485_mutex);
+
         if (pack_v > 0) {
-            /* Got valid data — update gd */
             lvgl_acquire();
             gd.batt_pct      = (int)soc;
             gd.bms_cell_min  = cell_min;
@@ -149,7 +144,7 @@ static void bms_task(void *arg)
             ESP_LOGI(TAG, "soc=%.1f%% v=%.1fV a=%.1fA cell=%.3f-%.3fV(%.0fmV) temp=%.1fC cyc=%d",
                      soc, pack_v, pack_a, cell_min, cell_max, cell_diff, temp, cycles);
         } else {
-            /* BMS not responding (sleep or disconnected) */
+            ESP_LOGI(TAG, "bms_valid → 0 (0x90 timed out or pack_v=0)");
             lvgl_acquire();
             gd.bms_valid = 0;
             lvgl_release();
