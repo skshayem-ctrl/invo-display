@@ -16,6 +16,7 @@
  *   CRC = sum of all preceding bytes & 0xFF
  */
 #include "daly_bms.h"
+#include "rs485_bus.h"
 #include "hw_config.h"
 #include "ui_common.h"
 #include "lvgl_port.h"
@@ -51,6 +52,8 @@ static uint8_t daly_crc(const uint8_t *data, int len)
  * Returns true and fills resp_data[8] on success. */
 static bool daly_send_recv(uint8_t cmd, uint8_t *resp_data)
 {
+    xSemaphoreTake(rs485_mutex, portMAX_DELAY);
+
     uint8_t req[13] = {0xA5, BMS_ADDR, cmd, 0x08, 0,0,0,0,0,0,0,0, 0};
     req[12] = daly_crc(req, 12);
 
@@ -64,17 +67,21 @@ static bool daly_send_recv(uint8_t cmd, uint8_t *resp_data)
     int got = uart_read_bytes(BMS_UART_NUM, resp, 13, pdMS_TO_TICKS(500));
     if (got < 13) {
         ESP_LOGD(TAG, "cmd 0x%02X timeout (got %d/13)", cmd, got);
+        xSemaphoreGive(rs485_mutex);
         return false;
     }
     if (resp[0] != 0xA5 || resp[1] != 0x01 || resp[2] != cmd) {
         ESP_LOGW(TAG, "cmd 0x%02X bad header: %02X %02X %02X", cmd, resp[0], resp[1], resp[2]);
+        xSemaphoreGive(rs485_mutex);
         return false;
     }
     if (daly_crc(resp, 12) != resp[12]) {
         ESP_LOGW(TAG, "cmd 0x%02X CRC fail", cmd);
+        xSemaphoreGive(rs485_mutex);
         return false;
     }
     memcpy(resp_data, resp + 4, 8);
+    xSemaphoreGive(rs485_mutex);
     return true;
 }
 
@@ -156,26 +163,6 @@ static void bms_task(void *arg)
 
 void daly_bms_start(void)
 {
-    gpio_config_t de_cfg = {
-        .pin_bit_mask = BIT64(BMS_UART_DE),
-        .mode         = GPIO_MODE_OUTPUT,
-    };
-    ESP_ERROR_CHECK(gpio_config(&de_cfg));
-    gpio_set_level(BMS_UART_DE, 0);
-
-    uart_config_t uart_cfg = {
-        .baud_rate  = BMS_BAUD,
-        .data_bits  = UART_DATA_8_BITS,
-        .parity     = UART_PARITY_DISABLE,
-        .stop_bits  = UART_STOP_BITS_1,
-        .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
-    };
-    ESP_ERROR_CHECK(uart_param_config(BMS_UART_NUM, &uart_cfg));
-    ESP_ERROR_CHECK(uart_set_pin(BMS_UART_NUM, BMS_UART_TX, BMS_UART_RX,
-                                 UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-    ESP_ERROR_CHECK(uart_driver_install(BMS_UART_NUM, 256, 0, 0, NULL, 0));
-
     xTaskCreate(bms_task, "bms", 4096, NULL, 3, NULL);
-    ESP_LOGI(TAG, "DALY BMS ready (UART%d TX=%d RX=%d DE=%d @ %d baud)",
-             BMS_UART_NUM, BMS_UART_TX, BMS_UART_RX, BMS_UART_DE, BMS_BAUD);
+    ESP_LOGI(TAG, "DALY BMS ready (shared RS485 bus, addr=0x%02X)", BMS_ADDR);
 }

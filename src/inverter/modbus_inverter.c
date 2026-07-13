@@ -18,6 +18,7 @@
  * If no response: swap A↔B at the inverter end and retry.
  */
 #include "modbus_inverter.h"
+#include "rs485_bus.h"
 #include "hw_config.h"
 #include "ui_common.h"
 #include "lvgl_port.h"
@@ -83,6 +84,8 @@ static void de_rx(void)
 
 static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
 {
+    xSemaphoreTake(rs485_mutex, portMAX_DELAY);
+
     uint8_t req[8];
     req[0] = MB_SLAVE;
     req[1] = 0x03;
@@ -96,11 +99,9 @@ static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
 
     uart_flush_input(MB_UART_NUM);
     de_tx();
-    vTaskDelay(pdMS_TO_TICKS(1)); /* module TX-enable settle */
+    vTaskDelay(pdMS_TO_TICKS(1));
     uart_write_bytes(MB_UART_NUM, req, 8);
     de_rx();
-    ESP_LOGI(TAG, "TX reg=%u cnt=%u DE→RX gpio=%d", start, count,
-             gpio_get_level(MB_UART_DE));
 
     int expected = 5 + count * 2;
     uint8_t resp[64];
@@ -108,30 +109,39 @@ static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
     if (got < expected)
     {
         ESP_LOGW(TAG, "RX timeout: got %d/%d (reg %u)", got, expected, start);
+        xSemaphoreGive(rs485_mutex);
         return -1;
     }
 
     if (resp[1] & 0x80)
     {
         ESP_LOGW(TAG, "Modbus exc 0x%02X", resp[2]);
+        xSemaphoreGive(rs485_mutex);
         return -2;
     }
     if (resp[2] != count * 2)
+    {
+        xSemaphoreGive(rs485_mutex);
         return -3;
+    }
     uint16_t resp_crc = (uint16_t)resp[expected - 2] | ((uint16_t)resp[expected - 1] << 8);
     if (resp_crc != crc16(resp, expected - 2))
     {
         ESP_LOGW(TAG, "CRC fail");
+        xSemaphoreGive(rs485_mutex);
         return -4;
     }
 
     for (int i = 0; i < count; i++)
         out[i] = ((uint16_t)resp[3 + i * 2] << 8) | resp[4 + i * 2];
+    xSemaphoreGive(rs485_mutex);
     return count;
 }
 
 static void mb_write_reg(uint16_t addr, uint16_t value)
 {
+    xSemaphoreTake(rs485_mutex, portMAX_DELAY);
+
     uint8_t req[8];
     req[0] = MB_SLAVE;
     req[1] = 0x06;
@@ -154,6 +164,8 @@ static void mb_write_reg(uint16_t addr, uint16_t value)
         ESP_LOGI(TAG, "Write ACK %04X=%u", addr, value);
     else
         ESP_LOGW(TAG, "Write NACK addr=%04X (got %d/8)", addr, got);
+
+    xSemaphoreGive(rs485_mutex);
 }
 
 /* ── Main poll task ──────────────────────────────────────────────────── */
@@ -324,28 +336,7 @@ static void modbus_task(void *arg)
 
 void modbus_inverter_start(void)
 {
-    /* DE pin — output, start low (receive mode) */
-    gpio_config_t de_cfg = {
-        .pin_bit_mask = BIT64(MB_UART_DE),
-        .mode = GPIO_MODE_OUTPUT,
-    };
-    ESP_ERROR_CHECK(gpio_config(&de_cfg));
-    gpio_set_level(MB_UART_DE, 0);
-    ESP_LOGI(TAG, "DE gpio=%d initial level=%d", MB_UART_DE, gpio_get_level(MB_UART_DE));
-
-    uart_config_t uart_cfg = {
-        .baud_rate = MB_BAUD,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-    };
-    ESP_ERROR_CHECK(uart_param_config(MB_UART_NUM, &uart_cfg));
-    ESP_ERROR_CHECK(uart_set_pin(MB_UART_NUM, MB_UART_TX, MB_UART_RX,
-                                 UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-    ESP_ERROR_CHECK(uart_driver_install(MB_UART_NUM, 256, 0, 0, NULL, 0));
-
+    rs485_bus_init();
     xTaskCreate(modbus_task, "modbus_inv", 4096, NULL, 4, NULL);
-    ESP_LOGI(TAG, "Modbus RTU ready (UART%d TX=%d RX=%d DE=%d @ %d baud)",
-             MB_UART_NUM, MB_UART_TX, MB_UART_RX, MB_UART_DE, MB_BAUD);
+    ESP_LOGI(TAG, "Modbus RTU ready (UART%d @ %d baud)", MB_UART_NUM, MB_BAUD);
 }
