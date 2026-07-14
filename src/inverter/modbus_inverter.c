@@ -47,9 +47,16 @@ static volatile bool s_valid = false;
 static volatile int s_pending_cmd = -1;
 static volatile int s_pending_chg_w = -1;
 static volatile int s_pending_chg_v = -1;
+static TaskHandle_t s_task_handle = NULL;
 
 bool modbus_inverter_valid(void) { return s_valid; }
-void modbus_inverter_request_output(int on) { s_pending_cmd = on; }
+
+void modbus_inverter_request_output(int on)
+{
+    s_pending_cmd = on;
+    if (s_task_handle) xTaskNotify(s_task_handle, 0, eNoAction);
+}
+
 void modbus_inverter_request_chg_w(int watts) { s_pending_chg_w = watts; }
 void modbus_inverter_request_chg_v(int tenths_v) { s_pending_chg_v = tenths_v; }
 
@@ -159,6 +166,7 @@ static void mb_write_reg(uint16_t addr, uint16_t value)
 
 static void modbus_task(void *arg)
 {
+    s_task_handle = xTaskGetCurrentTaskHandle();
     ESP_LOGI(TAG, "Modbus RTU polling started (UART%d TX=%d RX=%d DE=%d)",
              MB_UART_NUM, MB_UART_TX, MB_UART_RX, MB_UART_DE);
 
@@ -304,7 +312,8 @@ static void modbus_task(void *arg)
                  out_v, out_hz, out_w, out_a, grid_v, grid_a, grid_hz, inv_t,
                  inv_on, is_bypassing, ac_chg, fault, op_st);
 
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        /* Sleep 1s — but wake immediately if output command arrives */
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
     }
 }
 
