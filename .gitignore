@@ -44,5 +44,11 @@ dependencies.lock
 .cache
 CLAUDE.md
 
+# Python virtual environment
+.venv/
+
+# Local debug tools
+tools/
+
 # Explainer HTML (local reference only)
 *.html
