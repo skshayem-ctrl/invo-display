@@ -181,7 +181,6 @@ static void modbus_task(void *arg)
             mb_write_reg(REG_OUT_CTRL, cmd ? 1 : 0);
             xSemaphoreGive(rs485_mutex);
             ESP_LOGI(TAG, "Output %s", cmd ? "ON" : "OFF");
-            vTaskDelay(pdMS_TO_TICKS(500));
         }
 
         /* Pending charge power setpoint */
@@ -255,7 +254,7 @@ static void modbus_task(void *arg)
         if ((out_hz > 0.0f && out_hz < 44.0f) || out_hz > 56.0f)
         {
             ESP_LOGW(TAG, "Bad out_hz %.2f — discard", out_hz);
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
             continue;
         }
 
