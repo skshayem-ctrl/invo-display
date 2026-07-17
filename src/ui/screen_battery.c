@@ -7,7 +7,7 @@ static lv_obj_t *s_out_btn = NULL;
 
 static void output_toggle_cb(lv_event_t *e)
 {
-    modbus_inverter_request_output(gd.inv_on ? 0 : 1);
+    modbus_inverter_request_output(gd.out_switch ? 0 : 1);
 }
 
 lv_obj_t *screen_battery_create(void)
