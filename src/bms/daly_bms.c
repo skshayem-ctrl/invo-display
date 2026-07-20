@@ -56,7 +56,7 @@ static bool daly_cmd(uint8_t cmd, uint8_t *resp_data)
     de_rx();
 
     uint8_t resp[13];
-    int got = uart_read_bytes(BMS_UART_NUM, resp, 13, pdMS_TO_TICKS(200));
+    int got = uart_read_bytes(BMS_UART_NUM, resp, 13, pdMS_TO_TICKS(50));
     if (got < 13) {
         ESP_LOGI(TAG, "cmd 0x%02X timeout (got %d/13 bytes)", cmd, got);
         return false;
@@ -105,29 +105,39 @@ static void bms_task(void *arg)
         vTaskDelay(pdMS_TO_TICKS(50));
 
         /* 0x91 — min/max cell voltage */
-        if (daly_cmd(0x91, d)) {
-            cell_max  = (uint16_t)(d[0] << 8 | d[1]) * 0.001f;
-            cell_min  = (uint16_t)(d[3] << 8 | d[4]) * 0.001f;
-            cell_diff = (cell_max - cell_min) * 1000.0f;
-        }
         vTaskDelay(pdMS_TO_TICKS(50));
+        if (!daly_cmd(0x91, d)) {
+            xSemaphoreGive(rs485_mutex);
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+        cell_max  = (uint16_t)(d[0] << 8 | d[1]) * 0.001f;
+        cell_min  = (uint16_t)(d[3] << 8 | d[4]) * 0.001f;
+        cell_diff = (cell_max - cell_min) * 1000.0f;
 
         /* 0x94 — cycle count */
-        if (daly_cmd(0x94, d)) {
-            cycles = (uint16_t)(d[5] << 8 | d[6]);
-        }
         vTaskDelay(pdMS_TO_TICKS(50));
+        if (!daly_cmd(0x94, d)) {
+            xSemaphoreGive(rs485_mutex);
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+        cycles = (uint16_t)(d[5] << 8 | d[6]);
 
         /* 0x96 — temperatures (raw - 40 = °C, 0 = unused sensor) */
-        if (daly_cmd(0x96, d)) {
-            float max_t = -40.0f;
-            for (int i = 1; i < 8; i++) {
-                if (d[i] == 0 || d[i] == 0xFF) continue;
-                float t = (float)d[i] - 40.0f;
-                if (t > max_t) max_t = t;
-            }
-            temp = max_t > -40.0f ? max_t : 0.0f;
+        vTaskDelay(pdMS_TO_TICKS(50));
+        if (!daly_cmd(0x96, d)) {
+            xSemaphoreGive(rs485_mutex);
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
         }
+        float max_t = -40.0f;
+        for (int i = 1; i < 8; i++) {
+            if (d[i] == 0 || d[i] == 0xFF) continue;
+            float t = (float)d[i] - 40.0f;
+            if (t > max_t) max_t = t;
+        }
+        temp = max_t > -40.0f ? max_t : 0.0f;
 
         xSemaphoreGive(rs485_mutex);
 
