@@ -54,7 +54,7 @@ bool modbus_inverter_valid(void) { return s_valid; }
 void modbus_inverter_request_output(int on)
 {
     s_pending_cmd = on;
-    if (s_task_handle) xTaskNotify(s_task_handle, 0, eNoAction);
+    if (s_task_handle) xTaskNotifyGive(s_task_handle);
 }
 
 void modbus_inverter_request_chg_w(int watts) { s_pending_chg_w = watts; }
@@ -110,7 +110,7 @@ static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
 
     int expected = 5 + count * 2;
     uint8_t resp[64];
-    int got = uart_read_bytes(MB_UART_NUM, resp, expected, pdMS_TO_TICKS(1000));
+    int got = uart_read_bytes(MB_UART_NUM, resp, expected, pdMS_TO_TICKS(200));
     if (got < expected)
     {
         ESP_LOGW(TAG, "RX timeout: got %d/%d (reg %u)", got, expected, start);
@@ -178,6 +178,8 @@ static void modbus_task(void *arg)
         {
             s_pending_cmd = -1;
             xSemaphoreTake(rs485_mutex, portMAX_DELAY);
+            ESP_LOGI(TAG, "WRITE  output %s sending  t=%lldms", cmd ? "ON" : "OFF",
+                     esp_timer_get_time() / 1000);
             mb_write_reg(REG_OUT_CTRL, cmd ? 1 : 0);
             xSemaphoreGive(rs485_mutex);
             ESP_LOGI(TAG, "Output %s", cmd ? "ON" : "OFF");
@@ -219,7 +221,7 @@ static void modbus_task(void *arg)
         {
             ESP_LOGW(TAG, "Poll failed (rc1=%d rc2=%d)", rc1, rc2);
             s_valid = false;
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
             continue;
         }
 

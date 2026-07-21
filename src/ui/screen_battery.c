@@ -1,5 +1,9 @@
 #include "ui_common.h"
 #include "modbus_inverter.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+
+#define TAG "btn"
 
 static lv_obj_t *s_out_status_lbl = NULL;
 static lv_obj_t *s_out_btn_lbl = NULL;
@@ -7,7 +11,10 @@ static lv_obj_t *s_out_btn = NULL;
 
 static void output_toggle_cb(lv_event_t *e)
 {
-    modbus_inverter_request_output(gd.out_switch ? 0 : 1);
+    int cmd = gd.out_switch ? 0 : 1;
+    ESP_LOGI(TAG, "TOUCH  output %s requested  t=%lldms", cmd ? "ON" : "OFF",
+             esp_timer_get_time() / 1000);
+    modbus_inverter_request_output(cmd);
 }
 
 lv_obj_t *screen_battery_create(void)
