@@ -11,9 +11,13 @@ static lv_obj_t *s_out_btn = NULL;
 
 static void output_toggle_cb(lv_event_t *e)
 {
+    static int64_t s_last_press_ms = 0;
+    int64_t now_ms = esp_timer_get_time() / 1000;
+    if (now_ms - s_last_press_ms < 1000) return;  /* ignore within 1 second */
+    s_last_press_ms = now_ms;
+
     int cmd = gd.out_switch ? 0 : 1;
-    ESP_LOGI(TAG, "TOUCH  output %s requested  t=%lldms", cmd ? "ON" : "OFF",
-             esp_timer_get_time() / 1000);
+    ESP_LOGI(TAG, "TOUCH  output %s requested  t=%lldms", cmd ? "ON" : "OFF", now_ms);
     modbus_inverter_request_output(cmd);
 }
 
