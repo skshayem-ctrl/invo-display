@@ -136,7 +136,7 @@ static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
     return count;
 }
 
-static void mb_write_reg(uint16_t addr, uint16_t value)
+static bool mb_write_reg(uint16_t addr, uint16_t value)
 {
     uint8_t req[8];
     req[0] = MB_SLAVE;
@@ -156,10 +156,12 @@ static void mb_write_reg(uint16_t addr, uint16_t value)
     de_rx();
     uint8_t resp[8];
     int got = uart_read_bytes(MB_UART_NUM, resp, 8, pdMS_TO_TICKS(500));
-    if (got == 8)
+    if (got == 8) {
         ESP_LOGI(TAG, "Write ACK %04X=%u", addr, value);
-    else
-        ESP_LOGW(TAG, "Write NACK addr=%04X (got %d/8)", addr, got);
+        return true;
+    }
+    ESP_LOGW(TAG, "Write NACK addr=%04X (got %d/8)", addr, got);
+    return false;
 }
 
 /* ── Main poll task ──────────────────────────────────────────────────── */
@@ -180,9 +182,14 @@ static void modbus_task(void *arg)
             xSemaphoreTake(rs485_mutex, portMAX_DELAY);
             ESP_LOGI(TAG, "WRITE  output %s sending  t=%lldms", cmd ? "ON" : "OFF",
                      esp_timer_get_time() / 1000);
-            mb_write_reg(REG_OUT_CTRL, cmd ? 1 : 0);
+            bool acked = mb_write_reg(REG_OUT_CTRL, cmd ? 1 : 0);
             xSemaphoreGive(rs485_mutex);
             ESP_LOGI(TAG, "Output %s", cmd ? "ON" : "OFF");
+            if (acked) {
+                lvgl_acquire();
+                gd.out_switch = cmd;
+                lvgl_release();
+            }
         }
 
         /* Pending charge power setpoint */
