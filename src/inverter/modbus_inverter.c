@@ -188,6 +188,7 @@ static void modbus_task(void *arg)
             if (acked) {
                 lvgl_acquire();
                 gd.out_switch = cmd;
+                screen_battery_set_output_state(gd.inv_on, cmd);
                 lvgl_release();
             }
         }
