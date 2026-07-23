@@ -28,7 +28,7 @@ void app_main(void)
     app.scr_main = screen_main_create();
     lv_screen_load(app.scr_main);
     lv_timer_create(clock_tick_cb, 1000, NULL);
-    lv_timer_create(data_tick_cb,  2000, NULL);
+    lv_timer_create(data_tick_cb,  1000, NULL);
 
     weather_service_start();
     uart_input_start();

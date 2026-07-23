@@ -139,7 +139,27 @@ static void bms_task(void *arg)
         }
         temp = max_t > -40.0f ? max_t : 0.0f;
 
+        /* 0x97 — remaining / rated capacity (raw bytes logged to find scaling) */
+        float remain_ah = 0.0f;
+        vTaskDelay(pdMS_TO_TICKS(50));
+        if (daly_cmd(0x97, d)) {
+            uint32_t raw_rem  = (uint32_t)(d[0] << 24 | d[1] << 16 | d[2] << 8 | d[3]);
+            uint32_t raw_full = (uint32_t)(d[4] << 24 | d[5] << 16 | d[6] << 8 | d[7]);
+            ESP_LOGI(TAG, "0x97 raw: rem=0x%08lX(%lu) full=0x%08lX(%lu)",
+                     raw_rem, raw_rem, raw_full, raw_full);
+            remain_ah = raw_rem * 0.001f; /* assuming mAh units — verify from log */
+        }
+
         xSemaphoreGive(rs485_mutex);
+
+        /* Backup time — only when discharging and 0x97 gave us remaining Ah */
+        int bkp_h = 0, bkp_m = 0, bkp_valid = 0;
+        if (remain_ah > 0.0f && pack_a < -0.5f) {
+            float time_h = remain_ah / (-pack_a);
+            bkp_h     = (int)time_h;
+            bkp_m     = (int)((time_h - bkp_h) * 60.0f);
+            bkp_valid = 1;
+        }
 
         /* Update display — only reached when 0x90 succeeded */
         lvgl_acquire();
@@ -150,10 +170,13 @@ static void bms_task(void *arg)
         gd.bms_temp      = temp;
         gd.bms_cycles    = cycles;
         gd.bms_valid     = 1;
+        gd.backup_h      = bkp_h;
+        gd.backup_m      = bkp_m;
+        gd.backup_valid  = bkp_valid;
         lvgl_release();
 
-        ESP_LOGI(TAG, "soc=%.1f%% v=%.1fV a=%.1fA cell=%.3f-%.3fV(%.0fmV) temp=%.1fC cyc=%d",
-                 soc, pack_v, pack_a, cell_min, cell_max, cell_diff, temp, cycles);
+        ESP_LOGI(TAG, "soc=%.1f%% v=%.1fV a=%.1fA cell=%.3f-%.3fV(%.0fmV) temp=%.1fC cyc=%d rem=%.2fAh",
+                 soc, pack_v, pack_a, cell_min, cell_max, cell_diff, temp, cycles, remain_ah);
 
         vTaskDelay(pdMS_TO_TICKS(2000));
     }

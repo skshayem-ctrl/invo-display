@@ -20,7 +20,7 @@ typedef struct
 {
     /* battery */
     float solar_kw, load_kw;
-    int batt_pct, backup_h, backup_m;
+    int batt_pct, backup_h, backup_m, backup_valid;
     float chg_kw, batt_cap, batt_usable;
     int batt_health, batt_cycles;
     float batt_life, batt_temp;

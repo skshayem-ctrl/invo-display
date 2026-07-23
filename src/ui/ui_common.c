@@ -396,8 +396,8 @@ void data_tick_cb(lv_timer_t *t)
         gd.out_hz = 0.0f;
         gd.out_a = 0.0f;
     }
-    gd.today_solar_kwh += gd.solar_kw * (2.0f / 3600.0f);
-    gd.today_load_kwh += gd.load_kw * (2.0f / 3600.0f);
+    gd.today_solar_kwh += gd.solar_kw * (1.0f / 3600.0f);
+    gd.today_load_kwh += gd.load_kw * (1.0f / 3600.0f);
     bool batt_ok = uart_batt_valid();
 
     bool pct_ok = gd.bms_valid && gd.batt_pct > 0;
@@ -421,7 +421,7 @@ void data_tick_cb(lv_timer_t *t)
                : lv_label_set_text(app.w_batt_pct, "--");
 
     if (app.w_batt_backup)
-        pct_ok ? lv_label_set_text_fmt(app.w_batt_backup, "%dh %dm",
+        (pct_ok && gd.backup_valid) ? lv_label_set_text_fmt(app.w_batt_backup, "%dh %dm",
                                        gd.backup_h, gd.backup_m)
                : lv_label_set_text(app.w_batt_backup, "--");
 
@@ -453,7 +453,7 @@ void data_tick_cb(lv_timer_t *t)
         screen_battery_settings_set_chgv_last(gd.chgv_set_v);
     screen_battery_set_output_state(gd.inv_on, gd.out_switch);
     if (app.w_bd_bkp)
-        pct_ok ? lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm",
+        (pct_ok && gd.backup_valid) ? lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm",
                                        gd.backup_h, gd.backup_m)
                : lv_label_set_text(app.w_bd_bkp, "--");
     if (app.w_bd_grid_a)
