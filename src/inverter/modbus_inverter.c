@@ -295,8 +295,7 @@ static void modbus_task(void *arg)
         gd.chg_set_w = chg_set_w;
         gd.chgv_set_v = chgv_set_v;
         gd.batt_temp = (-10.0f <= inv_t && inv_t <= 120.0f) ? inv_t : 0.0f;
-        gd.backup_h = 0;
-        gd.backup_m = 0;
+        /* backup_h/m/valid owned by BMS task */
         gd.grid_v = grid_v;
         gd.grid_hz = grid_hz;
         gd.grid_a = grid_a;
