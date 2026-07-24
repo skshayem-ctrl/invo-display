@@ -10,11 +10,14 @@
 #include "weather_service.h"
 #include "uart_input.h"
 #include "daly_bms.h"
+#include "invo_debug.h"
 
 void app_main(void)
 {
     /* Mark this OTA slot valid so the bootloader won't roll back */
     esp_ota_mark_app_valid_cancel_rollback();
+
+    invo_debug_init();
 
     hal_display_init();   /* LDO + DSI + panel + LEDC backlight + LVGL init */
     hal_touch_init();     /* I2C + GT911 + LVGL indev */

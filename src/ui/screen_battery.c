@@ -2,6 +2,7 @@
 #include "modbus_inverter.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "invo_debug.h"
 
 #define TAG "btn"
 
@@ -18,6 +19,7 @@ static void output_toggle_cb(lv_event_t *e)
 
     int cmd = gd.out_switch ? 0 : 1;
     ESP_LOGI(TAG, "TOUCH  output %s requested  t=%lldms", cmd ? "ON" : "OFF", now_ms);
+    INVO_DBG("TOUCH output %s requested", cmd ? "ON" : "OFF");
     modbus_inverter_request_output(cmd);
 }
 
