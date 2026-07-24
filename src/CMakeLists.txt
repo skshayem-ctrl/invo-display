@@ -27,6 +27,8 @@ idf_component_register(
     "${CMAKE_SOURCE_DIR}/src/inverter/uart_input.c"
     # BMS
     "${CMAKE_SOURCE_DIR}/src/bms/daly_bms.c"
+    # Debug UART
+    "${CMAKE_SOURCE_DIR}/src/debug/invo_debug.c"
     # FOTA
     "${CMAKE_SOURCE_DIR}/src/fota/fota.c"
     # Weather
@@ -40,6 +42,7 @@ idf_component_register(
     "${CMAKE_SOURCE_DIR}/src/bms"
     "${CMAKE_SOURCE_DIR}/src/fota"
     "${CMAKE_SOURCE_DIR}/src/weather"
+    "${CMAKE_SOURCE_DIR}/src/debug"
     REQUIRES
     esp_timer
     esp_driver_gpio
