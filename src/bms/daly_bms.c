@@ -88,6 +88,7 @@ static void bms_task(void *arg)
         float cell_max = 0, cell_min = 0, cell_diff = 0;
         int cycles = 0;
         float temp = 0;
+        float remain_ah = 0.0f;
 
         xSemaphoreTake(rs485_mutex, portMAX_DELAY);
 
@@ -115,6 +116,14 @@ static void bms_task(void *arg)
         cell_min  = (uint16_t)(d[3] << 8 | d[4]) * 0.001f;
         cell_diff = (cell_max - cell_min) * 1000.0f;
 
+        /* 0x93 — MOSFET status; bytes 4-7 = remaining capacity in mAh */
+        vTaskDelay(pdMS_TO_TICKS(50));
+        if (daly_cmd(0x93, d)) {
+            uint32_t raw = (uint32_t)(d[4] << 24 | d[5] << 16 | d[6] << 8 | d[7]);
+            remain_ah = raw / 1000.0f;
+            ESP_LOGI(TAG, "0x93 remain=%lu mAh → %.2f Ah", (unsigned long)raw, remain_ah);
+        }
+
         /* 0x94 — cycle count */
         vTaskDelay(pdMS_TO_TICKS(50));
         if (!daly_cmd(0x94, d)) {
@@ -139,20 +148,13 @@ static void bms_task(void *arg)
         }
         temp = max_t > -40.0f ? max_t : 0.0f;
 
-        /* 0x97 — remaining / rated capacity (raw bytes logged to find scaling) */
-        float remain_ah = 0.0f;
-        vTaskDelay(pdMS_TO_TICKS(50));
-        if (daly_cmd(0x97, d)) {
-            uint32_t raw_rem  = (uint32_t)(d[0] << 24 | d[1] << 16 | d[2] << 8 | d[3]);
-            uint32_t raw_full = (uint32_t)(d[4] << 24 | d[5] << 16 | d[6] << 8 | d[7]);
-            ESP_LOGI(TAG, "0x97 raw: rem=0x%08lX(%lu) full=0x%08lX(%lu)",
-                     raw_rem, raw_rem, raw_full, raw_full);
-            remain_ah = raw_rem * 0.001f; /* assuming mAh units — verify from log */
-        }
-
         xSemaphoreGive(rs485_mutex);
 
-        /* Backup time — only when discharging and 0x97 gave us remaining Ah */
+        /* If 0x93 didn't respond, fall back to SOC × rated capacity */
+        if (remain_ah <= 0.0f)
+            remain_ah = (soc / 100.0f) * 50.0f;
+
+        /* Backup time — only when discharging */
         int bkp_h = 0, bkp_m = 0, bkp_valid = 0;
         if (remain_ah > 0.0f && pack_a < -0.5f) {
             float time_h = remain_ah / (-pack_a);
