@@ -150,14 +150,19 @@ static void bms_task(void *arg)
 
         xSemaphoreGive(rs485_mutex);
 
-        /* If 0x93 didn't respond, fall back to SOC × rated capacity */
+        /* If 0x93 didn't respond, fall back to SOC / 2 as Ah estimate */
         if (remain_ah <= 0.0f)
-            remain_ah = (soc / 100.0f) * 50.0f;
+            remain_ah = soc / 2.0f;
+
+        /* Smooth current with EMA to prevent backup time jumping every poll */
+        static float s_avg_a = 0.0f;
+        if (pack_a < -0.5f)
+            s_avg_a = s_avg_a * 0.7f + (-pack_a) * 0.3f;
 
         /* Backup time — only when discharging */
         int bkp_h = 0, bkp_m = 0, bkp_valid = 0;
-        if (remain_ah > 0.0f && pack_a < -0.5f) {
-            float time_h = remain_ah / (-pack_a);
+        if (remain_ah > 0.0f && pack_a < -0.5f && s_avg_a > 0.5f) {
+            float time_h = remain_ah / s_avg_a;
             bkp_h     = (int)time_h;
             bkp_m     = (int)((time_h - bkp_h) * 60.0f);
             bkp_valid = 1;
