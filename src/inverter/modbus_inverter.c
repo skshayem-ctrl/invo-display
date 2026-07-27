@@ -111,7 +111,7 @@ static int mb_read_regs(uint16_t start, uint8_t count, uint16_t *out)
 
     int expected = 5 + count * 2;
     uint8_t resp[64];
-    int got = uart_read_bytes(MB_UART_NUM, resp, expected, pdMS_TO_TICKS(200));
+    int got = uart_read_bytes(MB_UART_NUM, resp, expected, pdMS_TO_TICKS(100));
     if (got < expected)
     {
         ESP_LOGW(TAG, "RX timeout: got %d/%d (reg %u)", got, expected, start);
