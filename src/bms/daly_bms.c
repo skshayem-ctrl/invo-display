@@ -17,7 +17,6 @@
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
-#include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -104,7 +103,7 @@ static void bms_task(void *arg)
         int16_t raw_a = (int16_t)((uint16_t)(d[4] << 8 | d[5]) - 30000);
         pack_a = raw_a * 0.1f;
         soc    = (uint16_t)(d[6] << 8 | d[7]) * 0.1f;
-        vTaskDelay(pdMS_TO_TICKS(esp_random() % 1001));
+        vTaskDelay(pdMS_TO_TICKS(50));
 
         /* 0x91 — min/max cell voltage (critical) */
         xSemaphoreTake(rs485_mutex, portMAX_DELAY);
@@ -117,7 +116,7 @@ static void bms_task(void *arg)
         cell_max  = (uint16_t)(d[0] << 8 | d[1]) * 0.001f;
         cell_min  = (uint16_t)(d[3] << 8 | d[4]) * 0.001f;
         cell_diff = (cell_max - cell_min) * 1000.0f;
-        vTaskDelay(pdMS_TO_TICKS(esp_random() % 1001));
+        vTaskDelay(pdMS_TO_TICKS(50));
 
         /* 0x93 — remaining capacity (mAh) + cycle count (byte 3); non-critical */
         xSemaphoreTake(rs485_mutex, portMAX_DELAY);
@@ -129,7 +128,7 @@ static void bms_task(void *arg)
             remain_ah = raw / 1000.0f;
             ESP_LOGI(TAG, "0x93 remain=%lu mAh → %.2f Ah cyc=%d", (unsigned long)raw, remain_ah, cycles);
         }
-        vTaskDelay(pdMS_TO_TICKS(esp_random() % 1001));
+        vTaskDelay(pdMS_TO_TICKS(50));
 
         /* 0x92 — max/min temperature; d[0] = max temp (40 offset °C) */
         xSemaphoreTake(rs485_mutex, portMAX_DELAY);
