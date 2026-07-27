@@ -90,11 +90,11 @@ static void bms_task(void *arg)
         float temp = 0;
         float remain_ah = 0.0f;
 
+        /* 0x90 — SOC, pack voltage, current (critical) */
         xSemaphoreTake(rs485_mutex, portMAX_DELAY);
-
-        /* 0x90 — SOC, pack voltage, current (critical — bail early if it fails) */
-        if (!daly_cmd(0x90, d)) {
-            xSemaphoreGive(rs485_mutex);
+        bool ok = daly_cmd(0x90, d);
+        xSemaphoreGive(rs485_mutex);
+        if (!ok) {
             ESP_LOGI(TAG, "0x90 failed — keeping last display values");
             vTaskDelay(pdMS_TO_TICKS(2000));
             continue;
@@ -105,50 +105,40 @@ static void bms_task(void *arg)
         soc    = (uint16_t)(d[6] << 8 | d[7]) * 0.1f;
         vTaskDelay(pdMS_TO_TICKS(50));
 
-        /* 0x91 — min/max cell voltage */
-        vTaskDelay(pdMS_TO_TICKS(50));
-        if (!daly_cmd(0x91, d)) {
-            xSemaphoreGive(rs485_mutex);
+        /* 0x91 — min/max cell voltage (critical) */
+        xSemaphoreTake(rs485_mutex, portMAX_DELAY);
+        ok = daly_cmd(0x91, d);
+        xSemaphoreGive(rs485_mutex);
+        if (!ok) {
             vTaskDelay(pdMS_TO_TICKS(2000));
             continue;
         }
         cell_max  = (uint16_t)(d[0] << 8 | d[1]) * 0.001f;
         cell_min  = (uint16_t)(d[3] << 8 | d[4]) * 0.001f;
         cell_diff = (cell_max - cell_min) * 1000.0f;
-
-        /* 0x93 — MOSFET status; bytes 4-7 = remaining capacity in mAh */
         vTaskDelay(pdMS_TO_TICKS(50));
-        if (daly_cmd(0x93, d)) {
+
+        /* 0x93 — remaining capacity (mAh) + cycle count (byte 3); non-critical */
+        xSemaphoreTake(rs485_mutex, portMAX_DELAY);
+        ok = daly_cmd(0x93, d);
+        xSemaphoreGive(rs485_mutex);
+        if (ok) {
+            cycles = d[3];
             uint32_t raw = (uint32_t)(d[4] << 24 | d[5] << 16 | d[6] << 8 | d[7]);
             remain_ah = raw / 1000.0f;
-            ESP_LOGI(TAG, "0x93 remain=%lu mAh → %.2f Ah", (unsigned long)raw, remain_ah);
+            ESP_LOGI(TAG, "0x93 remain=%lu mAh → %.2f Ah cyc=%d", (unsigned long)raw, remain_ah, cycles);
         }
-
-        /* 0x94 — cycle count */
         vTaskDelay(pdMS_TO_TICKS(50));
-        if (!daly_cmd(0x94, d)) {
-            xSemaphoreGive(rs485_mutex);
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            continue;
-        }
-        cycles = (uint16_t)(d[5] << 8 | d[6]);
 
-        /* 0x96 — temperatures (raw - 40 = °C, 0 = unused sensor) */
-        vTaskDelay(pdMS_TO_TICKS(50));
-        if (!daly_cmd(0x96, d)) {
-            xSemaphoreGive(rs485_mutex);
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            continue;
-        }
-        float max_t = -40.0f;
-        for (int i = 1; i < 8; i++) {
-            if (d[i] == 0 || d[i] == 0xFF) continue;
-            float t = (float)d[i] - 40.0f;
-            if (t > max_t) max_t = t;
-        }
-        temp = max_t > -40.0f ? max_t : 0.0f;
-
+        /* 0x92 — max/min temperature; d[0] = max temp (40 offset °C) */
+        xSemaphoreTake(rs485_mutex, portMAX_DELAY);
+        ok = daly_cmd(0x92, d);
         xSemaphoreGive(rs485_mutex);
+        if (!ok) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+        temp = (d[0] != 0 && d[0] != 0xFF) ? (float)d[0] - 40.0f : 0.0f;
 
         /* If 0x93 didn't respond, fall back to SOC / 2 as Ah estimate */
         if (remain_ah <= 0.0f)

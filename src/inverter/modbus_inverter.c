@@ -225,13 +225,23 @@ static void modbus_task(void *arg)
             ESP_LOGI(TAG, "Charge V set → %.1f V", chgv * 0.1f);
         }
 
-        /* ── Read all register blocks under one mutex hold ────── */
+        /* ── Read register blocks — release mutex between reads so a pending
+         *    output command can slip in without waiting for the full poll ── */
         uint16_t r1[REG_B1_COUNT], r2[REG_B2_COUNT], r3[REG_B3_COUNT];
+
         xSemaphoreTake(rs485_mutex, portMAX_DELAY);
         int rc1 = mb_read_regs(REG_B1_START, REG_B1_COUNT, r1);
+        xSemaphoreGive(rs485_mutex);
+        if (s_pending_cmd >= 0) { ulTaskNotifyTake(pdTRUE, 0); continue; }
         vTaskDelay(pdMS_TO_TICKS(50));
+
+        xSemaphoreTake(rs485_mutex, portMAX_DELAY);
         int rc2 = mb_read_regs(REG_B2_START, REG_B2_COUNT, r2);
+        xSemaphoreGive(rs485_mutex);
+        if (s_pending_cmd >= 0) { ulTaskNotifyTake(pdTRUE, 0); continue; }
         vTaskDelay(pdMS_TO_TICKS(50));
+
+        xSemaphoreTake(rs485_mutex, portMAX_DELAY);
         int rc3 = mb_read_regs(REG_B3_START, REG_B3_COUNT, r3);
         xSemaphoreGive(rs485_mutex);
 
