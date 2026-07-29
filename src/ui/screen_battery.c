@@ -1,10 +1,5 @@
 #include "ui_common.h"
 
-void screen_battery_set_output_state(int actual_on, int switch_on)
-{
-    /* output toggle has moved to settings — stub kept for compat */
-    (void)actual_on; (void)switch_on;
-}
 
 lv_obj_t *screen_battery_create(void)
 {

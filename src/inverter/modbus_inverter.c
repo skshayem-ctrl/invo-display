@@ -195,7 +195,7 @@ static void modbus_task(void *arg)
                 INVO_DBG("ACK received out_switch=%d", cmd);
                 lvgl_acquire();
                 gd.out_switch = cmd;
-                screen_battery_set_output_state(gd.inv_on, cmd);
+                screen_settings_set_output_state(gd.inv_on, cmd);
                 lvgl_release();
                 INVO_DBG("UI updated out_switch=%d", cmd);
             } else {

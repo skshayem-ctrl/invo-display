@@ -142,15 +142,15 @@ lv_obj_t *screen_main_create(void)
         lv_obj_align(app.w_batt_backup, LV_ALIGN_CENTER, 0, +46);
     }
 
-    /* ── Load tile (right) ───────────────────────────────────────── */
+    /* ── Load tile (right, shifted up to make room for DC tile) ──── */
     {
-        lv_obj_t *lc = mk_cont(scr, 120, 80);
-        lv_obj_align(lc, LV_ALIGN_CENTER, +215, 0);
+        lv_obj_t *lc = mk_cont(scr, 120, 68);
+        lv_obj_align(lc, LV_ALIGN_CENTER, +215, -38);
         lv_obj_add_flag(lc, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(lc, go_load_cb, LV_EVENT_CLICKED, NULL);
 
         lv_obj_t *lr = mk_row(lc);
-        lv_obj_align(lr, LV_ALIGN_TOP_MID, 0, 8);
+        lv_obj_align(lr, LV_ALIGN_TOP_MID, 0, 6);
         lv_obj_t *li = lv_label_create(lr);
         lv_label_set_text(li, LV_SYMBOL_HOME);
         lv_obj_set_style_text_color(li, C_BLUE, 0);
@@ -161,6 +161,40 @@ lv_obj_t *screen_main_create(void)
         lv_obj_set_style_text_font(app.w_load_val, &lv_font_montserrat_24, 0);
 
         mk_lbl(lc, "Load", &lv_font_montserrat_14, C_GRAY,
+               LV_ALIGN_BOTTOM_MID, 0, -2);
+    }
+
+    /* ── Divider between Load and DC tile ────────────────────────── */
+    {
+        lv_obj_t *div = lv_obj_create(scr);
+        lv_obj_set_size(div, 90, 1);
+        lv_obj_align(div, LV_ALIGN_CENTER, +215, 0);
+        lv_obj_set_style_bg_color(div, C_LINE, 0);
+        lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(div, 0, 0);
+        lv_obj_clear_flag(div, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    }
+
+    /* ── DC Discharge tile (hidden when battery not discharging) ─── */
+    {
+        app.w_dc_tile = mk_cont(scr, 120, 68);
+        lv_obj_align(app.w_dc_tile, LV_ALIGN_CENTER, +215, +38);
+        lv_obj_add_flag(app.w_dc_tile, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(app.w_dc_tile, go_batt_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_add_flag(app.w_dc_tile, LV_OBJ_FLAG_HIDDEN);
+
+        lv_obj_t *dr = mk_row(app.w_dc_tile);
+        lv_obj_align(dr, LV_ALIGN_TOP_MID, 0, 6);
+        lv_obj_t *di = lv_label_create(dr);
+        lv_label_set_text(di, LV_SYMBOL_CHARGE);
+        lv_obj_set_style_text_color(di, C_AMBER, 0);
+        lv_obj_set_style_text_font(di, &lv_font_montserrat_36, 0);
+        app.w_dc_val = lv_label_create(dr);
+        lv_label_set_text(app.w_dc_val, "--");
+        lv_obj_set_style_text_color(app.w_dc_val, C_AMBER, 0);
+        lv_obj_set_style_text_font(app.w_dc_val, &lv_font_montserrat_24, 0);
+
+        mk_lbl(app.w_dc_tile, "DC Out", &lv_font_montserrat_14, C_GRAY,
                LV_ALIGN_BOTTOM_MID, 0, -2);
     }
 
