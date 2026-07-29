@@ -19,6 +19,8 @@ idf_component_register(
     "${CMAKE_SOURCE_DIR}/src/ui/screen_history.c"
     "${CMAKE_SOURCE_DIR}/src/ui/screen_alerts.c"
     "${CMAKE_SOURCE_DIR}/src/ui/screen_load.c"
+    "${CMAKE_SOURCE_DIR}/src/ui/screen_grid.c"
+    "${CMAKE_SOURCE_DIR}/src/ui/screen_room.c"
     # WiFi
     "${CMAKE_SOURCE_DIR}/src/wifi/wifi_manager.c"
     # Inverter / UART

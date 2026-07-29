@@ -2,18 +2,20 @@
 #include "lvgl.h"
 
 /* colour palette */
-#define C_BG lv_color_hex(0x080C18)
-#define C_CARD lv_color_hex(0x0E1422)
-#define C_LINE lv_color_hex(0x1E2A3A)
-#define C_BLUE lv_color_hex(0x1E90FF)
-#define C_GREEN lv_color_hex(0x39D353)
-#define C_AMBER lv_color_hex(0xFFA726)
-#define C_ORANGE lv_color_hex(0xFFA726)
+#define C_BG     lv_color_hex(0x0A0E14)
+#define C_CARD   lv_color_hex(0x0D1320)
+#define C_LINE   lv_color_hex(0x1E2A3A)
+#define C_BLUE   lv_color_hex(0x3B8BD4)
+#define C_GREEN  lv_color_hex(0x5DCAA5)
+#define C_AMBER  lv_color_hex(0xF2A623)
+#define C_ORANGE lv_color_hex(0xF2A623)
 #define C_PURPLE lv_color_hex(0xBB86FC)
-#define C_RED lv_color_hex(0xFF3B3B)
-#define C_WHITE lv_color_hex(0xFFFFFF)
-#define C_GRAY lv_color_hex(0x8892A0)
-#define C_DGRAY lv_color_hex(0x2A3348)
+#define C_RED    lv_color_hex(0xE24B4A)
+#define C_WHITE  lv_color_hex(0xFFFFFF)
+#define C_GRAY   lv_color_hex(0x8A8D94)
+#define C_DGRAY  lv_color_hex(0x2A3348)
+#define C_SUN    lv_color_hex(0xFFC940)
+#define C_LTGRAY lv_color_hex(0xC7C9CE)
 
 /* live inverter data */
 typedef struct
@@ -60,12 +62,14 @@ typedef struct
 {
     lv_obj_t *scr_main, *scr_batt, *scr_solar, *scr_load, *scr_wx, *scr_sleep, *scr_wifi;
     lv_obj_t *scr_settings, *scr_settings_general, *scr_batt_settings, *scr_history, *scr_alerts;
+    lv_obj_t *scr_grid, *scr_room;
     lv_obj_t *w_wifi;                                         /* main screen */
     lv_obj_t *w_wifi_bd, *w_wifi_sd, *w_wifi_ld, *w_wifi_wxd; /* detail screens */
     lv_obj_t *w_time, *w_date;
     lv_obj_t *w_sleep_time, *w_sleep_date;
-    lv_obj_t *w_batt_arc, *w_batt_pct, *w_batt_backup;
+    lv_obj_t *w_batt_arc, *w_batt_pct, *w_batt_backup, *w_batt_mode;
     lv_obj_t *w_solar_val, *w_load_val;
+    lv_obj_t *w_grid_val, *w_grid_status; /* AC input kW + "Input"/"No input" */
     lv_obj_t *w_warn_ring, *w_warn_dlg;
     /* battery detail */
     lv_obj_t *w_bd_pct, *w_bd_chg, *w_bd_bkp, *w_bd_full, *w_bd_tmp, *w_bd_grid_a;
@@ -74,14 +78,18 @@ typedef struct
     lv_obj_t *w_bd_grid_chg_w; /* mains charge W — live reading */
     /* solar detail */
     lv_obj_t *w_sd_kw, *w_sd_kwh, *w_sd_volt, *w_sd_cur;
-    lv_obj_t *w_sd_grid_hz, *w_sd_grid_v;
+    lv_obj_t *w_sd_grid_hz, *w_sd_grid_v; /* kept NULL — data now on grid screen */
     lv_obj_t *w_sd_chart;
     lv_chart_series_t *w_sd_ser;
+    /* AC input (grid) detail */
+    lv_obj_t *w_gd_input, *w_gd_v, *w_gd_hz, *w_gd_state, *w_gd_chg_w;
+    lv_obj_t *w_gd_bar;   /* lv_bar: input kW as % of nominal */
     /* home load detail */
     lv_obj_t *w_ld_kw, *w_ld_kwh;
     lv_obj_t *w_ld_out_v, *w_ld_out_hz, *w_ld_out_w, *w_ld_out_a;
     lv_obj_t *w_ld_chart;
     lv_chart_series_t *w_ld_ser;
+    lv_obj_t *w_ld_bar;   /* lv_bar: load kW as % of nominal */
     /* weather detail */
     lv_obj_t *w_wx_tmp, *w_wx_hum, *w_wx_aqarc, *w_wx_aqval;
     lv_obj_t *w_wx_cond, *w_wx_feels, *w_wx_wind;
@@ -110,12 +118,16 @@ void lv_lbl_setf(lv_obj_t *l, const char *fmt, double v);
 lv_obj_t *mk_cont(lv_obj_t *par, int w, int h);
 lv_obj_t *add_logo(lv_obj_t *par, int yoff);
 lv_obj_t *add_detail_header(lv_obj_t *par, const char *title);
+/* stat row: label left, value right, bottom border — returns value label */
+lv_obj_t *mk_stat_row(lv_obj_t *par, int yoff, const char *label, const char *value);
 /* Pi-style stat card: label/value/sub all centre-relative, returns value label */
 lv_obj_t *make_stat_card(lv_obj_t *scr, int w, int h, int ox, int oy,
                          const char *label, const char *value, const char *sub,
                          lv_color_t val_col, lv_color_t sub_col);
 
 /* navigation callbacks */
+void go_grid_cb(lv_event_t *e);
+void go_room_cb(lv_event_t *e);
 void go_load_cb(lv_event_t *e);
 void go_settings_cb(lv_event_t *e);
 void go_settings_general_cb(lv_event_t *e);
@@ -140,6 +152,7 @@ void data_tick_cb(lv_timer_t *t);
 lv_obj_t *screen_main_create(void);
 lv_obj_t *screen_battery_create(void);
 lv_obj_t *screen_settings_general_create(void);
+void screen_settings_set_output_state(int actual_on, int switch_on);
 lv_obj_t *screen_battery_settings_create(void);
 void screen_battery_settings_set_chg_last(int watts);
 void screen_battery_settings_set_chgv_last(int tenths_v);
@@ -152,6 +165,8 @@ lv_obj_t *screen_wifi_create(void);
 lv_obj_t *screen_settings_create(void);
 lv_obj_t *screen_history_create(void);
 lv_obj_t *screen_alerts_create(void);
+lv_obj_t *screen_grid_create(void);
+lv_obj_t *screen_room_create(void);
 
 /* weather icon (canvas-drawn) */
 #include "weather_icon.h"

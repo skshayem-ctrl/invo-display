@@ -67,7 +67,7 @@ void lvgl_task(void *arg)
         _lock_release(&lvgl_api_lock);
 
         /* Guard: highest case number must equal STARTUP_PHASES in hw_config.h */
-        _Static_assert(STARTUP_PHASES == 10,
+        _Static_assert(STARTUP_PHASES == 12,
                        "STARTUP_PHASES in hw_config.h must match the highest case in this switch");
 
         if (app.startup_phase > 0)
@@ -75,6 +75,12 @@ void lvgl_task(void *arg)
             _lock_acquire(&lvgl_api_lock);
             switch (app.startup_phase)
             {
+            case 12:
+                app.scr_room = screen_room_create();
+                break;
+            case 11:
+                app.scr_grid = screen_grid_create();
+                break;
             case 10:
                 app.scr_settings_general = screen_settings_general_create();
                 break;

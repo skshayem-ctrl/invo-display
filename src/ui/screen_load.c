@@ -1,4 +1,41 @@
 #include "ui_common.h"
+#include <stdio.h>
+
+/* Helper: one appliance row in the list */
+static lv_obj_t *load_row(lv_obj_t *par, const char *icon, lv_color_t icon_col,
+                           const char *name, const char *kwval, bool is_live)
+{
+    lv_obj_t *row = lv_obj_create(par);
+    lv_obj_set_size(row, 400, 52);
+    lv_obj_set_style_bg_color(row, C_CARD, 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(row, C_LINE, 0);
+    lv_obj_set_style_border_width(row, 1, 0);
+    lv_obj_set_style_radius(row, 10, 0);
+    lv_obj_set_style_pad_hor(row, 14, 0);
+    lv_obj_set_style_pad_ver(row, 0, 0);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *ic = lv_label_create(row);
+    lv_label_set_text(ic, icon);
+    lv_obj_set_style_text_color(ic, icon_col, 0);
+    lv_obj_set_style_text_font(ic, &lv_font_montserrat_20, 0);
+    lv_obj_align(ic, LV_ALIGN_LEFT_MID, 0, 0);
+
+    lv_obj_t *nm = lv_label_create(row);
+    lv_label_set_text(nm, name);
+    lv_obj_set_style_text_color(nm, C_WHITE, 0);
+    lv_obj_set_style_text_font(nm, &lv_font_montserrat_14, 0);
+    lv_obj_align(nm, LV_ALIGN_LEFT_MID, 32, 0);
+
+    lv_obj_t *kw = lv_label_create(row);
+    lv_label_set_text(kw, kwval);
+    lv_obj_set_style_text_color(kw, is_live ? C_BLUE : C_GRAY, 0);
+    lv_obj_set_style_text_font(kw, &lv_font_montserrat_14, 0);
+    lv_obj_align(kw, LV_ALIGN_RIGHT_MID, 0, 0);
+
+    return kw; /* return value label for live updates */
+}
 
 lv_obj_t *screen_load_create(void)
 {
@@ -6,72 +43,96 @@ lv_obj_t *screen_load_create(void)
     style_screen(scr);
     lv_obj_add_event_cb(scr, swipe_back_cb, LV_EVENT_GESTURE, NULL);
 
-    app.w_wifi_ld = add_detail_header(scr, "Home Load");
+    app.w_wifi_ld = add_detail_header(scr, "Home");
 
-    /* ── Left panel: icon / title / live kW ─────────────────────────── */
-    lv_obj_t *icon = lv_label_create(scr);
-    lv_label_set_text(icon, LV_SYMBOL_HOME);
-    lv_obj_set_style_text_color(icon, C_BLUE, 0);
-    lv_obj_set_style_text_font(icon, &lv_font_montserrat_36, 0);
-    lv_obj_align(icon, LV_ALIGN_CENTER, -215, -138);
+    /* ── Total load progress bar (% of 3 kW nominal) ─────────────── */
+    {
+        lv_obj_t *bg = lv_obj_create(scr);
+        lv_obj_set_size(bg, 400, 16);
+        lv_obj_align(bg, LV_ALIGN_CENTER, 0, -222);
+        lv_obj_set_style_bg_color(bg, C_DGRAY, 0);
+        lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(bg, 0, 0);
+        lv_obj_set_style_radius(bg, 8, 0);
+        lv_obj_set_style_pad_all(bg, 0, 0);
+        lv_obj_clear_flag(bg, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t *title = lv_label_create(scr);
-    lv_label_set_text(title, "Home Load");
-    lv_obj_set_style_text_color(title, C_GRAY, 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
-    lv_obj_align(title, LV_ALIGN_CENTER, -215, -82);
+        app.w_ld_bar = lv_bar_create(bg);
+        lv_obj_set_size(app.w_ld_bar, 400, 16);
+        lv_obj_center(app.w_ld_bar);
+        lv_bar_set_range(app.w_ld_bar, 0, 100);
+        lv_bar_set_value(app.w_ld_bar, 0, LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(app.w_ld_bar, C_DGRAY, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(app.w_ld_bar, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_radius(app.w_ld_bar, 8, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(app.w_ld_bar, C_BLUE, LV_PART_INDICATOR);
+        lv_obj_set_style_radius(app.w_ld_bar, 8, LV_PART_INDICATOR);
+        lv_obj_clear_flag(app.w_ld_bar, LV_OBJ_FLAG_CLICKABLE);
+    }
 
-    app.w_ld_kw = lv_label_create(scr);
-    lv_label_set_text(app.w_ld_kw, "--");
-    lv_obj_set_style_text_color(app.w_ld_kw, C_BLUE, 0);
-    lv_obj_set_style_text_font(app.w_ld_kw, &lv_font_montserrat_24, 0);
-    lv_obj_align(app.w_ld_kw, LV_ALIGN_CENTER, -215, -46);
+    /* ── Legend row ──────────────────────────────────────────────── */
+    {
+        lv_obj_t *leg = mk_row(scr);
+        lv_obj_align(leg, LV_ALIGN_CENTER, 0, -196);
+        lv_obj_set_style_pad_column(leg, 16, 0);
 
-    /* ── Vertical divider ────────────────────────────────────────────── */
-    lv_obj_t *divider = lv_obj_create(scr);
-    lv_obj_set_size(divider, 1, 230);
-    lv_obj_align(divider, LV_ALIGN_CENTER, -122, -85);
-    lv_obj_set_style_bg_color(divider, lv_color_hex(0x2a2a2a), 0);
-    lv_obj_set_style_border_width(divider, 0, 0);
-    lv_obj_set_style_pad_all(divider, 0, 0);
-    lv_obj_clear_flag(divider, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_t *mon = lv_label_create(leg);
+        lv_label_set_text(mon, "Monitored  0.0 kW");
+        lv_obj_set_style_text_color(mon, C_GRAY, 0);
+        lv_obj_set_style_text_font(mon, &lv_font_montserrat_12, 0);
 
-    /* ── Right: 2×2 stat grid (195×100, CENTER offsets) ─────────────── */
-    app.w_ld_out_v  = make_stat_card(scr, 195, 100,  -18, -185, "Output V",   "--", "AC voltage",   C_BLUE,   C_GRAY);
-    app.w_ld_out_hz = make_stat_card(scr, 195, 100,  192, -185, "Output Hz",  "--", "AC frequency", C_BLUE,   C_GRAY);
-    app.w_ld_out_w  = make_stat_card(scr, 195, 100,  -18,  -70, "Output W",   "--", "AC watts",     C_BLUE,   C_GRAY);
-    app.w_ld_out_a  = make_stat_card(scr, 195, 100,  192,  -70, "Output A",   "--", "AC current",   C_ORANGE, C_GRAY);
+        lv_obj_t *sep = lv_label_create(leg);
+        lv_label_set_text(sep, "|");
+        lv_obj_set_style_text_color(sep, C_LINE, 0);
+        lv_obj_set_style_text_font(sep, &lv_font_montserrat_12, 0);
 
-    /* ── Chart label ─────────────────────────────────────────────────── */
-    lv_obj_t *ct = lv_label_create(scr);
-    lv_label_set_text(ct, "CONSUMPTION  (TODAY)");
-    lv_obj_set_style_text_color(ct, lv_color_hex(0x555555), 0);
-    lv_obj_set_style_text_font(ct, &lv_font_montserrat_12, 0);
-    lv_obj_align(ct, LV_ALIGN_CENTER, 0, 58);
+        lv_obj_t *unm_lbl = lv_label_create(leg);
+        lv_label_set_text(unm_lbl, "Unmonitored");
+        lv_obj_set_style_text_color(unm_lbl, C_LTGRAY, 0);
+        lv_obj_set_style_text_font(unm_lbl, &lv_font_montserrat_12, 0);
 
-    /* ── Live chart (555×125, CENTER,0,138) ──────────────────────────── */
-    lv_obj_t *chart = lv_chart_create(scr);
-    lv_obj_set_size(chart, 555, 125);
-    lv_obj_align(chart, LV_ALIGN_CENTER, 0, 138);
-    lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
-    lv_obj_set_style_bg_color(chart, lv_color_hex(0x0a0d1a), 0);
-    lv_obj_set_style_bg_opa(chart, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(chart, lv_color_hex(0x1a1e2e), 0);
-    lv_obj_set_style_border_width(chart, 1, 0);
-    lv_obj_set_style_radius(chart, 10, 0);
-    lv_chart_set_div_line_count(chart, 3, 4);
-    lv_obj_set_style_line_color(chart, lv_color_hex(0x1a1a2a), LV_PART_MAIN);
-    lv_obj_set_style_line_width(chart, 1, LV_PART_MAIN);
-    lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, 0, 40);
-    lv_chart_set_point_count(chart, 13);
-    lv_obj_set_style_line_width(chart, 2, LV_PART_ITEMS);
-    lv_obj_set_style_width(chart, 0, LV_PART_INDICATOR);
-    lv_obj_set_style_height(chart, 0, LV_PART_INDICATOR);
+        app.w_ld_kw = lv_label_create(leg);
+        lv_label_set_text(app.w_ld_kw, "-- kW");
+        lv_obj_set_style_text_color(app.w_ld_kw, C_BLUE, 0);
+        lv_obj_set_style_text_font(app.w_ld_kw, &lv_font_montserrat_12, 0);
+    }
 
-    lv_chart_series_t *ser = lv_chart_add_series(chart, C_BLUE, LV_CHART_AXIS_PRIMARY_Y);
-    for (int i = 0; i < 13; i++) lv_chart_set_next_value(chart, ser, 0);
-    app.w_ld_chart = chart;
-    app.w_ld_ser   = ser;
+    /* ── "Active appliances" caption ─────────────────────────────── */
+    add_hdiv(scr, 186, 400); /* TOP_MID y=186 → CENTER -174 */
+    mk_lbl(scr, "ACTIVE APPLIANCES", &lv_font_montserrat_12, C_GRAY,
+           LV_ALIGN_CENTER, 0, -162);
+
+    /* ── Scrollable appliance list ───────────────────────────────── */
+    lv_obj_t *list = lv_obj_create(scr);
+    lv_obj_set_size(list, 440, 340);
+    lv_obj_align(list, LV_ALIGN_CENTER, 0, +52);
+    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(list, 0, 0);
+    lv_obj_set_style_pad_all(list, 0, 0);
+    lv_obj_set_style_pad_row(list, 8, 0);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(list, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    /* Real data rows (from inverter output) */
+    app.w_ld_out_v  = load_row(list, LV_SYMBOL_POWER, C_GREEN,
+                                "AC Output",  "--", true);
+    app.w_ld_out_w  = load_row(list, LV_SYMBOL_CHARGE, C_AMBER,
+                                "Active Load", "--", true);
+    app.w_ld_out_a  = load_row(list, LV_SYMBOL_REFRESH, C_BLUE,
+                                "AC Current", "--", true);
+    app.w_ld_out_hz = load_row(list, LV_SYMBOL_AUDIO, C_PURPLE,
+                                "Frequency",  "--", true);
+
+    /* Dummy appliance rows (sensor data pending) */
+    load_row(list, LV_SYMBOL_SETTINGS, C_GRAY, "AC Unit",     "0.9 kW", false);
+    load_row(list, LV_SYMBOL_SETTINGS, C_GRAY, "Refrigerator","0.2 kW", false);
+    load_row(list, LV_SYMBOL_SETTINGS, C_GRAY, "Lights",      "0.1 kW", false);
+
+    /* null unused handles */
+    app.w_ld_kwh   = NULL;
+    app.w_ld_chart = NULL;
+    app.w_ld_ser   = NULL;
 
     add_logo(scr, -22);
     return scr;

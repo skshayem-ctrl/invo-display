@@ -194,21 +194,20 @@ lv_obj_t *add_logo(lv_obj_t *par, int yoff)
     return c;
 }
 
-/* ── detail screen header (WiFi centred at top, title below) ───── */
+/* ── detail screen header: title + divider + back button ───────── */
 
 lv_obj_t *add_detail_header(lv_obj_t *par, const char *title)
 {
-    lv_obj_t *wifi = mk_lbl(par, LV_SYMBOL_WIFI, &lv_font_montserrat_14, C_GRAY,
-                            LV_ALIGN_TOP_MID, 0, 28);
-    mk_lbl(par, title, &lv_font_montserrat_16, C_GRAY,
-           LV_ALIGN_TOP_MID, 0, 46);
+    mk_lbl(par, title, &lv_font_montserrat_16, C_LTGRAY,
+           LV_ALIGN_TOP_MID, 0, 32);
+    add_hdiv(par, 58, 560);
 
     lv_obj_t *back = lv_btn_create(par);
     lv_obj_set_size(back, 72, 72);
     lv_obj_align(back, LV_ALIGN_BOTTOM_MID, -200, -90);
-    lv_obj_set_style_bg_color(back, lv_color_hex(0x1e1e1e), 0);
+    lv_obj_set_style_bg_color(back, lv_color_hex(0x161B24), 0);
     lv_obj_set_style_radius(back, 36, 0);
-    lv_obj_set_style_border_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_border_color(back, C_LINE, 0);
     lv_obj_set_style_border_width(back, 1, 0);
     lv_obj_add_event_cb(back, go_main_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *arr = lv_label_create(back);
@@ -216,7 +215,40 @@ lv_obj_t *add_detail_header(lv_obj_t *par, const char *title)
     lv_obj_set_style_text_color(arr, C_WHITE, 0);
     lv_obj_set_style_text_font(arr, &lv_font_montserrat_24, 0);
     lv_obj_center(arr);
-    return wifi;
+    return NULL; /* WiFi icon removed from detail screens per new design */
+}
+
+/* ── stat row: label left, value right, thin divider below ──────── */
+/* yoff is offset from CENTER (positive = down).                       */
+lv_obj_t *mk_stat_row(lv_obj_t *par, int yoff, const char *label, const char *value)
+{
+    lv_obj_t *row = lv_obj_create(par);
+    lv_obj_set_size(row, 480, 44);
+    lv_obj_align(row, LV_ALIGN_CENTER, 0, yoff);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+    mk_lbl(row, label, &lv_font_montserrat_12, C_GRAY, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_t *val = lv_label_create(row);
+    lv_label_set_text(val, value);
+    lv_obj_set_style_text_color(val, C_WHITE, 0);
+    lv_obj_set_style_text_font(val, &lv_font_montserrat_14, 0);
+    lv_obj_align(val, LV_ALIGN_RIGHT_MID, 0, 0);
+
+    /* divider sits at bottom edge of the 44-px row */
+    lv_obj_t *d = lv_obj_create(par);
+    lv_obj_set_size(d, 480, 1);
+    lv_obj_align(d, LV_ALIGN_CENTER, 0, yoff + 22);
+    lv_obj_set_style_bg_color(d, C_LINE, 0);
+    lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(d, 0, 0);
+    lv_obj_set_style_pad_all(d, 0, 0);
+    lv_obj_set_style_radius(d, 0, 0);
+    lv_obj_clear_flag(d, LV_OBJ_FLAG_CLICKABLE);
+
+    return val;
 }
 
 /* ── navigation callbacks ──────────────────────────────────────── */
@@ -255,6 +287,16 @@ void go_load_cb(lv_event_t *e)
 {
     if (app.scr_load)
         lv_screen_load_anim(app.scr_load, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+void go_grid_cb(lv_event_t *e)
+{
+    if (app.scr_grid)
+        lv_screen_load_anim(app.scr_grid, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+void go_room_cb(lv_event_t *e)
+{
+    if (app.scr_room)
+        lv_screen_load_anim(app.scr_room, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
 }
 void go_settings_cb(lv_event_t *e)
 {
@@ -315,7 +357,7 @@ void clock_tick_cb(lv_timer_t *t)
         if (app.w_date)
         {
             char date_buf[32];
-            strftime(date_buf, sizeof(date_buf), "%b %d %A", &ti);
+            strftime(date_buf, sizeof(date_buf), "%A", &ti);
             lv_label_set_text(app.w_date, date_buf);
         }
     }
@@ -416,6 +458,31 @@ void data_tick_cb(lv_timer_t *t)
     else if (app.w_load_val)
         lv_label_set_text(app.w_load_val, "--");
 
+    /* AC Input kW + status label */
+    {
+        bool has_ac = gd.grid_v > 50.0f;
+        float grid_kw = has_ac ? gd.grid_v * gd.grid_a / 1000.0f : 0.0f;
+        if (app.w_grid_val)
+            has_ac ? lv_lbl_setf(app.w_grid_val, "%.1f kw", grid_kw)
+                   : lv_label_set_text(app.w_grid_val, "--");
+        if (app.w_grid_status) {
+            lv_label_set_text(app.w_grid_status, has_ac ? "Input" : "No input");
+            lv_obj_set_style_text_color(app.w_grid_status,
+                                        has_ac ? C_BLUE : C_GRAY, 0);
+        }
+    }
+
+    /* AQI color — applies India CPCB bands to main-screen badge */
+    if (gd.aqi > 0) {
+        lv_color_t aqc = gd.aqi <= 50  ? lv_color_hex(0x5DCAA5) :
+                         gd.aqi <= 100 ? lv_color_hex(0xA9CB4E) :
+                         gd.aqi <= 200 ? lv_color_hex(0xE8A33D) :
+                         gd.aqi <= 300 ? lv_color_hex(0xF2994A) :
+                         gd.aqi <= 400 ? C_RED : lv_color_hex(0x7A1F1F);
+        if (app.w_main_wx_aqi)     lv_obj_set_style_text_color(app.w_main_wx_aqi, aqc, 0);
+        if (app.w_main_wx_aqi_cat) lv_obj_set_style_text_color(app.w_main_wx_aqi_cat, aqc, 0);
+    }
+
     if (app.w_batt_pct)
         pct_ok ? lv_label_set_text_fmt(app.w_batt_pct, "%d%%", gd.batt_pct)
                : lv_label_set_text(app.w_batt_pct, "--");
@@ -431,6 +498,20 @@ void data_tick_cb(lv_timer_t *t)
         lv_obj_set_style_arc_color(app.w_batt_arc, arc_col, LV_PART_INDICATOR);
     }
 
+    /* battery mode text (inside ring on main screen) */
+    if (app.w_batt_mode) {
+        if (gd.ac_chg) {
+            lv_label_set_text(app.w_batt_mode, "Charging");
+            lv_obj_set_style_text_color(app.w_batt_mode, C_BLUE, 0);
+        } else if (gd.batt_a < -0.5f) {
+            lv_label_set_text(app.w_batt_mode, "Discharging");
+            lv_obj_set_style_text_color(app.w_batt_mode, C_AMBER, 0);
+        } else {
+            lv_label_set_text(app.w_batt_mode, "Idle");
+            lv_obj_set_style_text_color(app.w_batt_mode, C_GRAY, 0);
+        }
+    }
+
     /* ── Battery detail ──────────────────────────────────────────── */
     if (app.w_bd_pct)
         pct_ok ? lv_label_set_text_fmt(app.w_bd_pct, "%d%%", gd.batt_pct)
@@ -440,18 +521,37 @@ void data_tick_cb(lv_timer_t *t)
                       : lv_label_set_text(app.w_bd_batt_v, "--");
     if (app.w_bd_batt_a)
         lv_lbl_setf(app.w_bd_batt_a, "%.1f A", gd.batt_a);
-    if (app.w_bd_chg)
-        lv_lbl_setf(app.w_bd_chg, "%.1f kW", gd.chg_kw);
-    if (app.w_bd_tmp)
-        gd.batt_temp > 0 ? lv_lbl_setf(app.w_bd_tmp, "%.1f\xC2\xB0"
-                                                     "C",
-                                       gd.batt_temp)
-                         : lv_label_set_text(app.w_bd_tmp, "--");
+    if (app.w_bd_chg) {
+        /* repurposed: now shows Battery state */
+        if (gd.ac_chg) {
+            char bstate[40];
+            snprintf(bstate, sizeof(bstate), "Charging | %.1f kW", gd.chg_kw);
+            lv_label_set_text(app.w_bd_chg, bstate);
+            lv_obj_set_style_text_color(app.w_bd_chg, C_BLUE, 0);
+        } else if (gd.batt_a < -0.5f) {
+            char bstate[40];
+            snprintf(bstate, sizeof(bstate), "Discharging | %.1f kW", gd.load_kw);
+            lv_label_set_text(app.w_bd_chg, bstate);
+            lv_obj_set_style_text_color(app.w_bd_chg, C_AMBER, 0);
+        } else {
+            lv_label_set_text(app.w_bd_chg, "Idle");
+            lv_obj_set_style_text_color(app.w_bd_chg, C_GRAY, 0);
+        }
+    }
+    if (app.w_bd_tmp) {
+        float tmp = (gd.bms_valid && gd.bms_temp > 0) ? gd.bms_temp : gd.batt_temp;
+        tmp > 0 ? lv_lbl_setf(app.w_bd_tmp, "%.1f\xC2\xB0""C", tmp)
+                : lv_label_set_text(app.w_bd_tmp, "--");
+    }
+    if (app.w_bd_full)
+        gd.batt_cap > 0 ? lv_lbl_setf(app.w_bd_full, "%.1f kWh", gd.batt_cap)
+                        : lv_label_set_text(app.w_bd_full, "--");
     if (gd.chg_set_w > 0)
         screen_battery_settings_set_chg_last(gd.chg_set_w);
     if (gd.chgv_set_v > 0)
         screen_battery_settings_set_chgv_last(gd.chgv_set_v);
     screen_battery_set_output_state(gd.inv_on, gd.out_switch);
+    screen_settings_set_output_state(gd.inv_on, gd.out_switch);
     if (app.w_bd_bkp)
         (pct_ok && gd.backup_valid) ? lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm",
                                        gd.backup_h, gd.backup_m)
@@ -526,6 +626,50 @@ void data_tick_cb(lv_timer_t *t)
     if (app.w_ld_chart && app.w_ld_ser)
         lv_chart_set_next_value(app.w_ld_chart, app.w_ld_ser,
                                 (lv_value_precise_t)(gd.load_kw * 10.0f));
+
+    /* load progress bar (% of 3 kW nominal) */
+    if (app.w_ld_bar) {
+        int pct = (int)(gd.load_kw / 3.0f * 100.0f);
+        if (pct > 100) pct = 100;
+        lv_bar_set_value(app.w_ld_bar, pct, LV_ANIM_OFF);
+    }
+
+    /* ── AC Input (grid) detail ──────────────────────────────────── */
+    {
+        bool has_ac = gd.grid_v > 50.0f;
+        float grid_kw = has_ac ? gd.grid_v * gd.grid_a / 1000.0f : 0.0f;
+        if (app.w_gd_input)
+            has_ac ? lv_lbl_setf(app.w_gd_input, "%.1f kW", grid_kw)
+                   : lv_label_set_text(app.w_gd_input, "--");
+        if (app.w_gd_v)
+            gd.grid_v > 0 ? lv_lbl_setf(app.w_gd_v, "%.0f V", gd.grid_v)
+                          : lv_label_set_text(app.w_gd_v, "--");
+        if (app.w_gd_hz)
+            gd.grid_hz > 0 ? lv_lbl_setf(app.w_gd_hz, "%.1f Hz", gd.grid_hz)
+                           : lv_label_set_text(app.w_gd_hz, "--");
+        if (app.w_gd_state) {
+            if (gd.ac_chg) {
+                char s[40];
+                snprintf(s, sizeof(s), "Charging | %.1f kW", gd.chg_kw);
+                lv_label_set_text(app.w_gd_state, s);
+                lv_obj_set_style_text_color(app.w_gd_state, C_BLUE, 0);
+            } else if (gd.batt_a < -0.5f) {
+                lv_label_set_text(app.w_gd_state, "Discharging");
+                lv_obj_set_style_text_color(app.w_gd_state, C_AMBER, 0);
+            } else {
+                lv_label_set_text(app.w_gd_state, "Idle");
+                lv_obj_set_style_text_color(app.w_gd_state, C_GRAY, 0);
+            }
+        }
+        if (app.w_gd_chg_w)
+            gd.grid_chg_w > 0 ? lv_label_set_text_fmt(app.w_gd_chg_w, "%d W", gd.grid_chg_w)
+                               : lv_label_set_text(app.w_gd_chg_w, "--");
+        if (app.w_gd_bar) {
+            int pct = (int)(grid_kw / 3.0f * 100.0f);
+            if (pct > 100) pct = 100;
+            lv_bar_set_value(app.w_gd_bar, pct, LV_ANIM_OFF);
+        }
+    }
 
     /* weather widgets managed by weather_service */
 }
