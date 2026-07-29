@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v1.0.96)'
+        required: true
 
 permissions:
   contents: write
@@ -15,8 +20,9 @@ jobs:
     steps:
       - name: Create GitHub Release
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "INVO ${{ github.ref_name }}" \
+          TAG="${{ github.ref_name || github.event.inputs.tag }}"
+          gh release create "$TAG" \
+            --title "INVO $TAG" \
             --generate-notes \
             --repo "${{ github.repository }}"
         env:
@@ -33,7 +39,9 @@ jobs:
       - name: Stamp version into sdkconfig.defaults
         id: ver
         run: |
-          VER="${GITHUB_REF_NAME#v}"
+          TAG="${{ github.ref_name || github.event.inputs.tag }}"
+          VER="${TAG#v}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "clean=${VER}" >> $GITHUB_OUTPUT
           sed -i "s/CONFIG_APP_PROJECT_VER=.*/CONFIG_APP_PROJECT_VER=\"${VER}\"/" \
             sdkconfig.defaults
@@ -54,7 +62,7 @@ jobs:
 
       - name: Upload binary to GitHub Release
         run: |
-          TAG="${{ github.ref_name }}"
+          TAG="${{ steps.ver.outputs.tag }}"
           BIN="invo-esp32-${TAG}.bin"
           sudo cp build/invo-esp32.bin "$BIN"
           gh release upload "$TAG" "$BIN" --clobber
@@ -65,7 +73,7 @@ jobs:
 
       - name: Push binary to binaries branch (raw.githubusercontent.com FOTA)
         run: |
-          TAG="${{ github.ref_name }}"
+          TAG="${{ steps.ver.outputs.tag }}"
           REPO="${{ github.repository }}"
           BINDIR=$(mktemp -d)
           cd "$BINDIR"
@@ -85,7 +93,7 @@ jobs:
       - name: Update version.json and push to master
         run: |
           VER="${{ steps.ver.outputs.clean }}"
-          TAG="${{ github.ref_name }}"
+          TAG="${{ steps.ver.outputs.tag }}"
           REPO="${{ github.repository }}"
           RAW_URL="https://raw.githubusercontent.com/${REPO}/binaries/invo-esp32.bin"
 
