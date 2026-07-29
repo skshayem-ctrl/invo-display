@@ -34,9 +34,10 @@ lv_obj_t *screen_grid_create(void)
         lv_obj_clear_flag(app.w_gd_bar, LV_OBJ_FLAG_CLICKABLE);
     }
 
-    /* ── bar label: "-- / 3.0 kW" ───────────────────────────────── */
-    mk_lbl(scr, "-- / 3.0 kW  (grid capacity)", &lv_font_montserrat_12, C_GRAY,
-           LV_ALIGN_CENTER, 0, -166);
+    /* ── bar label: "-- / 3.0 kW" — dynamic handle ─────────────── */
+    app.w_gd_bar_lbl = mk_lbl(scr, "-- / 3.0 kW  (grid capacity)",
+                               &lv_font_montserrat_12, C_GRAY,
+                               LV_ALIGN_CENTER, 0, -166);
 
     /* ── 5 stat rows ─────────────────────────────────────────────── */
     app.w_gd_input  = mk_stat_row(scr, -104, "Input now",    "--");

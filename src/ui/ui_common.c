@@ -230,7 +230,7 @@ lv_obj_t *mk_stat_row(lv_obj_t *par, int yoff, const char *label, const char *va
     lv_obj_set_style_pad_all(row, 0, 0);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
-    mk_lbl(row, label, &lv_font_montserrat_12, C_GRAY, LV_ALIGN_LEFT_MID, 0, 0);
+    mk_lbl(row, label, &lv_font_montserrat_14, C_GRAY, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_t *val = lv_label_create(row);
     lv_label_set_text(val, value);
     lv_obj_set_style_text_color(val, C_WHITE, 0);
@@ -458,6 +458,18 @@ void data_tick_cb(lv_timer_t *t)
     else if (app.w_load_val)
         lv_label_set_text(app.w_load_val, "--");
 
+    /* DC Discharge tile — visible only when battery is actively discharging */
+    if (app.w_dc_tile) {
+        bool discharging = gd.batt_a < -0.5f;
+        if (discharging) {
+            lv_obj_clear_flag(app.w_dc_tile, LV_OBJ_FLAG_HIDDEN);
+            float dc_kw = (-gd.batt_a) * gd.batt_v / 1000.0f;
+            lv_lbl_setf(app.w_dc_val, "%.1f kw", dc_kw);
+        } else {
+            lv_obj_add_flag(app.w_dc_tile, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
     /* AC Input kW + status label */
     {
         bool has_ac = gd.grid_v > 50.0f;
@@ -487,10 +499,17 @@ void data_tick_cb(lv_timer_t *t)
         pct_ok ? lv_label_set_text_fmt(app.w_batt_pct, "%d%%", gd.batt_pct)
                : lv_label_set_text(app.w_batt_pct, "--");
 
-    if (app.w_batt_backup)
-        (pct_ok && gd.backup_valid) ? lv_label_set_text_fmt(app.w_batt_backup, "%dh %dm",
-                                       gd.backup_h, gd.backup_m)
-               : lv_label_set_text(app.w_batt_backup, "--");
+    if (app.w_batt_backup) {
+        if (pct_ok && gd.backup_valid) {
+            lv_label_set_text_fmt(app.w_batt_backup, "%dh %dm", gd.backup_h, gd.backup_m);
+            lv_color_t bkp_col = (gd.backup_h < 1) ? C_RED :
+                                 (gd.backup_h < 3) ? C_AMBER : C_GREEN;
+            lv_obj_set_style_text_color(app.w_batt_backup, bkp_col, 0);
+        } else {
+            lv_label_set_text(app.w_batt_backup, "--");
+            lv_obj_set_style_text_color(app.w_batt_backup, C_GRAY, 0);
+        }
+    }
 
     if (app.w_batt_arc)
     {
@@ -550,7 +569,6 @@ void data_tick_cb(lv_timer_t *t)
         screen_battery_settings_set_chg_last(gd.chg_set_w);
     if (gd.chgv_set_v > 0)
         screen_battery_settings_set_chgv_last(gd.chgv_set_v);
-    screen_battery_set_output_state(gd.inv_on, gd.out_switch);
     screen_settings_set_output_state(gd.inv_on, gd.out_switch);
     if (app.w_bd_bkp)
         (pct_ok && gd.backup_valid) ? lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm",
@@ -603,6 +621,8 @@ void data_tick_cb(lv_timer_t *t)
     if (app.w_sd_cur)
         gd.pv_a > 0 ? lv_lbl_setf(app.w_sd_cur, "%.1f A", gd.pv_a)
                     : lv_label_set_text(app.w_sd_cur, "--");
+    if (app.w_sd_kwh)
+        lv_lbl_setf(app.w_sd_kwh, "%.2f kWh", gd.today_solar_kwh);
     if (app.w_sd_chart && app.w_sd_ser)
         lv_chart_set_next_value(app.w_sd_chart, app.w_sd_ser,
                                 (lv_value_precise_t)(gd.solar_kw * 10.0f));
@@ -668,6 +688,13 @@ void data_tick_cb(lv_timer_t *t)
             int pct = (int)(grid_kw / 3.0f * 100.0f);
             if (pct > 100) pct = 100;
             lv_bar_set_value(app.w_gd_bar, pct, LV_ANIM_OFF);
+        }
+        if (app.w_gd_bar_lbl) {
+            if (has_ac)
+                lv_label_set_text_fmt(app.w_gd_bar_lbl,
+                                      "%.1f / 3.0 kW  (grid capacity)", grid_kw);
+            else
+                lv_label_set_text(app.w_gd_bar_lbl, "-- / 3.0 kW  (grid capacity)");
         }
     }
 

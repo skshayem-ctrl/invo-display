@@ -36,7 +36,7 @@ lv_obj_t *screen_weather_create(void)
         lv_obj_set_style_text_color(aqnum, C_GREEN, 0);
         lv_obj_set_style_text_font(aqnum, &lv_font_montserrat_14, 0);
         app.w_wx_aq_cat = lv_label_create(aqrow);
-        lv_label_set_text(app.w_wx_aq_cat, "· --");
+        lv_label_set_text(app.w_wx_aq_cat, "| --");
         lv_obj_set_style_text_color(app.w_wx_aq_cat, C_GRAY, 0);
         lv_obj_set_style_text_font(app.w_wx_aq_cat, &lv_font_montserrat_14, 0);
         /* store the AQI number in aqval handle, reuse aqrow's first label */

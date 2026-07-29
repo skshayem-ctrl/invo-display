@@ -69,6 +69,7 @@ typedef struct
     lv_obj_t *w_sleep_time, *w_sleep_date;
     lv_obj_t *w_batt_arc, *w_batt_pct, *w_batt_backup, *w_batt_mode;
     lv_obj_t *w_solar_val, *w_load_val;
+    lv_obj_t *w_dc_tile, *w_dc_val; /* DC discharge tile (hidden when idle) */
     lv_obj_t *w_grid_val, *w_grid_status; /* AC input kW + "Input"/"No input" */
     lv_obj_t *w_warn_ring, *w_warn_dlg;
     /* battery detail */
@@ -83,7 +84,8 @@ typedef struct
     lv_chart_series_t *w_sd_ser;
     /* AC input (grid) detail */
     lv_obj_t *w_gd_input, *w_gd_v, *w_gd_hz, *w_gd_state, *w_gd_chg_w;
-    lv_obj_t *w_gd_bar;   /* lv_bar: input kW as % of nominal */
+    lv_obj_t *w_gd_bar;      /* lv_bar: input kW as % of nominal */
+    lv_obj_t *w_gd_bar_lbl; /* "X.X / 3.0 kW" dynamic text */
     /* home load detail */
     lv_obj_t *w_ld_kw, *w_ld_kwh;
     lv_obj_t *w_ld_out_v, *w_ld_out_hz, *w_ld_out_w, *w_ld_out_a;
@@ -156,7 +158,6 @@ void screen_settings_set_output_state(int actual_on, int switch_on);
 lv_obj_t *screen_battery_settings_create(void);
 void screen_battery_settings_set_chg_last(int watts);
 void screen_battery_settings_set_chgv_last(int tenths_v);
-void screen_battery_set_output_state(int actual_on, int switch_on);
 lv_obj_t *screen_solar_create(void);
 lv_obj_t *screen_weather_create(void);
 lv_obj_t *screen_sleep_create(void);

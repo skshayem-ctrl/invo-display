@@ -43,7 +43,7 @@ lv_obj_t *screen_load_create(void)
     style_screen(scr);
     lv_obj_add_event_cb(scr, swipe_back_cb, LV_EVENT_GESTURE, NULL);
 
-    app.w_wifi_ld = add_detail_header(scr, "Home");
+    app.w_wifi_ld = add_detail_header(scr, "Load");
 
     /* ── Total load progress bar (% of 3 kW nominal) ─────────────── */
     {

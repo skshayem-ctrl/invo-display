@@ -227,9 +227,11 @@ static void update_ui(void)
         lv_obj_set_style_arc_color(app.w_wx_aqarc, aqi_color(gd.aqi), LV_PART_INDICATOR);
     }
     if (app.w_wx_aqval)
-        lv_label_set_text_fmt(app.w_wx_aqval, "%d", gd.aqi);
+        lv_label_set_text_fmt(app.w_wx_aqval, "AQI %d", gd.aqi);
     if (app.w_wx_aq_cat) {
-        lv_label_set_text(app.w_wx_aq_cat, aqi_category(gd.aqi));
+        char aqi_s[32];
+        snprintf(aqi_s, sizeof(aqi_s), "| %s", aqi_category(gd.aqi));
+        lv_label_set_text(app.w_wx_aq_cat, aqi_s);
         lv_obj_set_style_text_color(app.w_wx_aq_cat, aqi_color(gd.aqi), 0);
     }
     if (app.w_wx_aq_desc)
