@@ -49,6 +49,7 @@ CLAUDE.md
 
 # Local debug tools
 tools/
+artifacts/
 
 # Explainer HTML (local reference only)
 *.html

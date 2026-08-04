@@ -11,6 +11,7 @@
 #include "uart_input.h"
 #include "daly_bms.h"
 #include "invo_debug.h"
+#include "server_connect.h"
 
 void app_main(void)
 {
@@ -23,6 +24,7 @@ void app_main(void)
     hal_touch_init();     /* I2C + GT911 + LVGL indev */
 
     wifi_manager_init();  /* after display so the screen isn't blank during 15s WiFi wait */
+    server_connect_test(); /* TCP login test to la5.intellicar.in:10131 */
 
     /* Build main screen and start UI timers */
     app.clk_h = 10;

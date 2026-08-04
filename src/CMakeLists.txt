@@ -33,6 +33,8 @@ idf_component_register(
     "${CMAKE_SOURCE_DIR}/src/debug/invo_debug.c"
     # FOTA
     "${CMAKE_SOURCE_DIR}/src/fota/fota.c"
+    # Server connectivity test
+    "${CMAKE_SOURCE_DIR}/src/server/server_connect.c"
     # Weather
     "${CMAKE_SOURCE_DIR}/src/weather/weather_service.c"
     INCLUDE_DIRS
@@ -45,6 +47,7 @@ idf_component_register(
     "${CMAKE_SOURCE_DIR}/src/fota"
     "${CMAKE_SOURCE_DIR}/src/weather"
     "${CMAKE_SOURCE_DIR}/src/debug"
+    "${CMAKE_SOURCE_DIR}/src/server"
     REQUIRES
     esp_timer
     esp_driver_gpio
@@ -62,4 +65,6 @@ idf_component_register(
     json
     app_update
     esp_https_ota
+    efuse
+    spiffs
 )
