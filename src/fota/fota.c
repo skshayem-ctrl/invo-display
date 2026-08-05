@@ -16,6 +16,9 @@
 #define OTA_CHUNK_SLEEP 50   /* ms — yield to SDIO write task between flash writes */
 
 volatile bool fota_active = false;
+SemaphoreHandle_t g_net_sem = NULL;
+
+void fota_net_init(void) { g_net_sem = xSemaphoreCreateMutex(); }
 
 static volatile fota_state_t s_state = FOTA_IDLE;
 static volatile bool s_cancel = false;
@@ -215,11 +218,15 @@ static void fota_task(void *arg)
      * eliminating the 60-second SDIO cascade caused by aborting a CDN stream. */
     char remote_ver[33] = {0};
     bool version_ok = false;
+    /* Take the network mutex — blocks until weather's http_get() has finished
+     * so FOTA's TLS handshake is the only active HTTPS on the SDIO bus. */
+    if (g_net_sem) xSemaphoreTake(g_net_sem, portMAX_DELAY);
     for (int attempt = 0; attempt < 3 && !version_ok; attempt++) {
         if (attempt > 0) vTaskDelay(pdMS_TO_TICKS(10000));
         if (!wifi_manager_connected()) continue;
         version_ok = fetch_remote_version(local_ver, remote_ver, sizeof(remote_ver));
     }
+    if (g_net_sem) xSemaphoreGive(g_net_sem);
 
     if (!version_ok) {
         fota_active = false;

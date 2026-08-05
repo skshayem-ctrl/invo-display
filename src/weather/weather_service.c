@@ -13,7 +13,7 @@
 #include "weather_service.h"
 #include "weather_icon.h"
 
-extern volatile bool fota_active;
+#include "fota.h"
 
 #define WEATHER_URL \
     "http://api.open-meteo.com/v1/forecast" \
@@ -93,10 +93,13 @@ static lv_color_t aqi_color(int aqi)
 
 static bool http_get(const char *url, char *buf, int buf_size)
 {
+    if (g_net_sem) xSemaphoreTake(g_net_sem, portMAX_DELAY);
+
     esp_http_client_config_t cfg = {
         .url               = url,
         .timeout_ms        = 10000,
     };
+    bool result = false;
     for (int attempt = 0; attempt < 3; attempt++) {
         if (attempt > 0) {
             ESP_LOGW(TAG, "HTTP retry %d for %s", attempt, url);
@@ -113,9 +116,11 @@ static bool http_get(const char *url, char *buf, int buf_size)
             }
         }
         esp_http_client_cleanup(client);
-        if (ok) return true;
+        if (ok) { result = true; break; }
     }
-    return false;
+
+    if (g_net_sem) xSemaphoreGive(g_net_sem);
+    return result;
 }
 
 /* ── Fetch functions ───────────────────────────────────────────── */

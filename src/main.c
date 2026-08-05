@@ -12,6 +12,7 @@
 #include "daly_bms.h"
 #include "invo_debug.h"
 #include "server_connect.h"
+#include "fota.h"
 
 void app_main(void)
 {
@@ -19,6 +20,7 @@ void app_main(void)
     esp_ota_mark_app_valid_cancel_rollback();
 
     invo_debug_init();
+    fota_net_init(); /* create network mutex before any task starts */
 
     hal_display_init();   /* LDO + DSI + panel + LEDC backlight + LVGL init */
     hal_touch_init();     /* I2C + GT911 + LVGL indev */
