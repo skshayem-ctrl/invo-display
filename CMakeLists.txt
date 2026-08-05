@@ -18,6 +18,15 @@ set(EXTRA_COMPONENT_DIRS "src")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(invo-esp32)
 
+# Generate .hex alongside .bin after every build
+add_custom_command(
+    TARGET ${CMAKE_PROJECT_NAME}.elf POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} -O ihex
+            ${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.elf
+            ${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.hex
+    COMMENT "Generating ${CMAKE_PROJECT_NAME}.hex"
+)
+
 # Suppress LVGL warnings that flood the build log
 idf_component_get_property(lvgl_lib lvgl__lvgl COMPONENT_LIB)
 target_compile_options(${lvgl_lib} PRIVATE

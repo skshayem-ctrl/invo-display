@@ -668,29 +668,11 @@ static void run_download(la5_session_t *s)
                  pf.init.file_type, fid_hex);
         ESP_LOGI(TAG, "Expected hash: %s", fhash_hex);
 
-        /* ---- Phase 2: Open OTA write handle into the inactive partition ---- */
-        const esp_partition_t *ota_part = esp_ota_get_next_update_partition(NULL);
-        if (!ota_part) {
-            ESP_LOGE(TAG, "No OTA partition available");
-            uint8_t mod[4 + 66];
-            size_t mlen = build_mod10(dl.file_id, dl.file_hash, STATUS_FAILURE, mod);
-            send_secure(s, BEACON_UPLINK, mod, mlen);
-            continue;
-        }
-        ESP_LOGI(TAG, "OTA target: %s @ 0x%08lx (%lu B)",
-                 ota_part->label,
-                 (unsigned long)ota_part->address,
-                 (unsigned long)ota_part->size);
-
-        esp_ota_handle_t ota_handle = 0;
-        esp_err_t err = esp_ota_begin(ota_part, dl.file_size, &ota_handle);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "esp_ota_begin: %s", esp_err_to_name(err));
-            uint8_t mod[4 + 66];
-            size_t mlen = build_mod10(dl.file_id, dl.file_hash, STATUS_FAILURE, mod);
-            send_secure(s, BEACON_UPLINK, mod, mlen);
-            continue;
-        }
+        /* ---- Phase 2: Prepare state — routing decided on first byte of first chunk ---- */
+        int  is_esp32   = -1;   /* -1=unknown, 0=RA2L1/other, 1=ESP32 */
+        const esp_partition_t *ota_part   = NULL;
+        esp_ota_handle_t       ota_handle = 0;
+        esp_err_t err;
 
         /* SHA-256 computed incrementally alongside the OTA writes */
         mbedtls_sha256_context sha;
@@ -703,7 +685,6 @@ static void run_download(la5_session_t *s)
             size_t mlen = build_mod10(dl.file_id, dl.file_hash, STATUS_STARTED, mod);
             if (send_secure(s, BEACON_UPLINK, mod, mlen)) {
                 ESP_LOGW(TAG, "Failed to send INIT_REPLY — socket dead");
-                esp_ota_abort(ota_handle);
                 mbedtls_sha256_free(&sha);
                 return;
             }
@@ -758,10 +739,35 @@ static void run_download(la5_session_t *s)
                                     : pf.chunks.chunk_size;
                     const uint8_t *data = pf.chunks.data + ci * pf.chunks.chunk_size;
 
-                    err = esp_ota_write(ota_handle, data, clen);
-                    if (err != ESP_OK) {
-                        ESP_LOGE(TAG, "esp_ota_write: %s", esp_err_to_name(err));
-                        ota_error = 1; break;
+                    /* First chunk — detect firmware type from byte 8 (after 8-byte LAF header) */
+                    int first_write = (is_esp32 < 0);
+                    if (is_esp32 < 0) {
+                        is_esp32 = (clen > 8 && data[8] == 0xE9) ? 1 : 0;
+                        if (is_esp32) {
+                            ota_part = esp_ota_get_next_update_partition(NULL);
+                            if (!ota_part) {
+                                ESP_LOGE(TAG, "No OTA partition");
+                                ota_error = 1; break;
+                            }
+                            err = esp_ota_begin(ota_part, dl.file_size - 8, &ota_handle);
+                            if (err != ESP_OK) {
+                                ESP_LOGE(TAG, "esp_ota_begin: %s", esp_err_to_name(err));
+                                ota_error = 1; break;
+                            }
+                            ESP_LOGI(TAG, "ESP32 firmware — OTA to %s (skipping 8-byte LAF header)", ota_part->label);
+                        } else {
+                            ESP_LOGI(TAG, "Non-ESP32 firmware (byte8=0x%02x) — downloading without OTA", data[8]);
+                        }
+                    }
+
+                    if (is_esp32) {
+                        const uint8_t *ota_data = first_write ? data + 8 : data;
+                        uint32_t       ota_clen = first_write ? clen - 8  : clen;
+                        err = esp_ota_write(ota_handle, ota_data, ota_clen);
+                        if (err != ESP_OK) {
+                            ESP_LOGE(TAG, "esp_ota_write: %s", esp_err_to_name(err));
+                            ota_error = 1; break;
+                        }
                     }
                     mbedtls_sha256_update(&sha, data, clen);
                 }
@@ -781,14 +787,14 @@ static void run_download(la5_session_t *s)
         size_t  mlen;
 
         if (socket_dead) {
-            esp_ota_abort(ota_handle);
+            if (is_esp32 > 0 && ota_handle) esp_ota_abort(ota_handle);
             mbedtls_sha256_free(&sha);
             return;
         }
 
         if (ota_error || dl.next_chunk < dl.total_chunks) {
             ESP_LOGE(TAG, "Download incomplete or OTA error — aborting");
-            esp_ota_abort(ota_handle);
+            if (is_esp32 > 0 && ota_handle) esp_ota_abort(ota_handle);
             mbedtls_sha256_free(&sha);
             mlen = build_mod10(dl.file_id, dl.file_hash, STATUS_FAILURE, mod);
             send_secure(s, BEACON_UPLINK, mod, mlen);
@@ -802,35 +808,39 @@ static void run_download(la5_session_t *s)
         ESP_LOGI(TAG, "Computed hash: %s", calc_hex);
 
         if (memcmp(calc_hash, dl.file_hash, 32) != 0) {
-            ESP_LOGE(TAG, "SHA-256 MISMATCH — OTA aborted");
-            esp_ota_abort(ota_handle);
+            ESP_LOGE(TAG, "SHA-256 MISMATCH — aborting");
+            if (is_esp32 > 0 && ota_handle) esp_ota_abort(ota_handle);
             mlen = build_mod10(dl.file_id, dl.file_hash, STATUS_FAILURE, mod);
             send_secure(s, BEACON_UPLINK, mod, mlen);
             continue;
         }
 
-        ESP_LOGI(TAG, "SHA-256 verified — committing OTA to %s", ota_part->label);
-        err = esp_ota_end(ota_handle);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "esp_ota_end: %s", esp_err_to_name(err));
+        if (is_esp32) {
+            ESP_LOGI(TAG, "SHA-256 verified — committing OTA to %s", ota_part->label);
+            err = esp_ota_end(ota_handle);
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "esp_ota_end: %s", esp_err_to_name(err));
+                mlen = build_mod10(dl.file_id, dl.file_hash, STATUS_FAILURE, mod);
+                send_secure(s, BEACON_UPLINK, mod, mlen);
+                continue;
+            }
+            err = esp_ota_set_boot_partition(ota_part);
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "esp_ota_set_boot_partition: %s", esp_err_to_name(err));
+                mlen = build_mod10(dl.file_id, dl.file_hash, STATUS_FAILURE, mod);
+                send_secure(s, BEACON_UPLINK, mod, mlen);
+                continue;
+            }
+            ESP_LOGI(TAG, "OTA committed — sending SUCCESS then rebooting");
+            mlen = build_mod10(dl.file_id, dl.file_hash, STATUS_SUCCESS, mod);
+            send_secure(s, BEACON_UPLINK, mod, mlen);
+            vTaskDelay(pdMS_TO_TICKS(500));
+            esp_restart();
+        } else {
+            ESP_LOGW(TAG, "SHA-256 verified — non-ESP32 file received (RA2L1 SPIFFS path not yet implemented)");
             mlen = build_mod10(dl.file_id, dl.file_hash, STATUS_FAILURE, mod);
             send_secure(s, BEACON_UPLINK, mod, mlen);
-            continue;
         }
-
-        err = esp_ota_set_boot_partition(ota_part);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "esp_ota_set_boot_partition: %s", esp_err_to_name(err));
-            mlen = build_mod10(dl.file_id, dl.file_hash, STATUS_FAILURE, mod);
-            send_secure(s, BEACON_UPLINK, mod, mlen);
-            continue;
-        }
-
-        ESP_LOGI(TAG, "OTA committed — sending SUCCESS then rebooting");
-        mlen = build_mod10(dl.file_id, dl.file_hash, STATUS_SUCCESS, mod);
-        send_secure(s, BEACON_UPLINK, mod, mlen);
-        vTaskDelay(pdMS_TO_TICKS(500));   /* let the ACK transmit before reset */
-        esp_restart();
     }
 }
 

@@ -44,6 +44,9 @@ dependencies.lock
 .cache
 CLAUDE.md
 
+# Python scripts (local server tools)
+*.py
+
 # Python virtual environment
 .venv/
 
