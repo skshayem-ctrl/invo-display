@@ -34,6 +34,8 @@ typedef struct
     int grid_chg_w;
     int chg_set_w;  /* charge power setpoint read back from inverter */
     int chgv_set_v; /* charge voltage setpoint ×0.1V read back from inverter */
+    int fan_speed;  /* current fan speed 0-100 from reg 4047 */
+    int fan_set;    /* fan speed setpoint 0-100 from reg 4058 */
     /* battery V/A */
     float batt_v, batt_a;
     /* inverter output */
@@ -158,6 +160,8 @@ void screen_settings_set_output_state(int actual_on, int switch_on);
 lv_obj_t *screen_battery_settings_create(void);
 void screen_battery_settings_set_chg_last(int watts);
 void screen_battery_settings_set_chgv_last(int tenths_v);
+void screen_battery_settings_set_fan_actual(int pct);
+void screen_battery_settings_set_fan_last(int pct);
 lv_obj_t *screen_solar_create(void);
 lv_obj_t *screen_weather_create(void);
 lv_obj_t *screen_sleep_create(void);

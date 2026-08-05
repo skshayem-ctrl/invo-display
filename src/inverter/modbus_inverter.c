@@ -37,17 +37,19 @@
 #define REG_B1_START 4017
 #define REG_B1_COUNT 17 /* 4017-4033 */
 #define REG_B2_START 4036
-#define REG_B2_COUNT 8 /* 4036-4043 */
+#define REG_B2_COUNT 12 /* 4036-4047 */
 #define REG_OUT_CTRL 4049
 #define REG_CHG_CTRL 4054
 #define REG_CHG_VOLT 4056 /* Battery charge voltage setpoint ×0.1V */
+#define REG_FAN_CTRL 4058 /* Fan speed setpoint 0-100 */
 #define REG_B3_START 4049
-#define REG_B3_COUNT 8 /* 4049–4056 */
+#define REG_B3_COUNT 10 /* 4049-4058 */
 
 static volatile bool s_valid = false;
 static volatile int s_pending_cmd = -1;
 static volatile int s_pending_chg_w = -1;
 static volatile int s_pending_chg_v = -1;
+static volatile int s_pending_fan   = -1;
 static TaskHandle_t s_task_handle = NULL;
 
 bool modbus_inverter_valid(void) { return s_valid; }
@@ -60,6 +62,7 @@ void modbus_inverter_request_output(int on)
 
 void modbus_inverter_request_chg_w(int watts) { s_pending_chg_w = watts; }
 void modbus_inverter_request_chg_v(int tenths_v) { s_pending_chg_v = tenths_v; }
+void modbus_inverter_request_fan(int pct) { s_pending_fan = pct; }
 
 /* ── CRC16 ───────────────────────────────────────────────────────────── */
 
@@ -225,6 +228,17 @@ static void modbus_task(void *arg)
             ESP_LOGI(TAG, "Charge V set → %.1f V", chgv * 0.1f);
         }
 
+        /* Pending fan speed setpoint */
+        int fan_req = s_pending_fan;
+        if (fan_req >= 0)
+        {
+            s_pending_fan = -1;
+            xSemaphoreTake(rs485_mutex, portMAX_DELAY);
+            mb_write_reg(REG_FAN_CTRL, (uint16_t)fan_req);
+            xSemaphoreGive(rs485_mutex);
+            ESP_LOGI(TAG, "Fan speed set → %d%%", fan_req);
+        }
+
         /* ── Read register blocks — release mutex between reads so a pending
          *    output command can slip in without waiting for the full poll ── */
         uint16_t r1[REG_B1_COUNT], r2[REG_B2_COUNT], r3[REG_B3_COUNT];
@@ -270,6 +284,8 @@ static void modbus_task(void *arg)
         int out_switch = (rc3 >= 0) ? (int)r3[0] : 0; /* 4049 output switch */
         int chg_set_w = (rc3 >= 0) ? (int)r3[5] : 0;  /* 4054 charge power W */
         int chgv_set_v = (rc3 >= 0) ? (int)r3[7] : 0; /* 4056 charge voltage ×0.1V */
+        int fan_speed  = (rc2 >= 0) ? (int)r2[11] : 0; /* 4047 current fan speed 0-100 */
+        int fan_set    = (rc3 >= 0) ? (int)r3[9]  : 0; /* 4058 fan speed setpoint 0-100 */
 
         float out_hz = r2[3] * 0.01f;
         uint16_t op_st = r2[4];
@@ -314,6 +330,8 @@ static void modbus_task(void *arg)
         gd.chg_kw = (float)batt_w / 1000.0f;
         gd.chg_set_w = chg_set_w;
         gd.chgv_set_v = chgv_set_v;
+        gd.fan_speed = fan_speed;
+        gd.fan_set   = fan_set;
         gd.batt_temp = (-10.0f <= inv_t && inv_t <= 120.0f) ? inv_t : 0.0f;
         /* backup_h/m/valid owned by BMS task */
         gd.grid_v = grid_v;

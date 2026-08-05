@@ -6,3 +6,4 @@ bool modbus_inverter_valid(void);
 void modbus_inverter_request_output(int on);    /* 1=ON, 0=OFF — posted async */
 void modbus_inverter_request_chg_w(int watts);     /* charge power setpoint → reg 4054 */
 void modbus_inverter_request_chg_v(int tenths_v);  /* charge voltage setpoint ×0.1V → reg 4056 */
+void modbus_inverter_request_fan(int pct);         /* fan speed setpoint 0-100 → reg 4058 */

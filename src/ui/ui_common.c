@@ -568,6 +568,8 @@ void data_tick_cb(lv_timer_t *t)
         screen_battery_settings_set_chg_last(gd.chg_set_w);
     if (gd.chgv_set_v > 0)
         screen_battery_settings_set_chgv_last(gd.chgv_set_v);
+    screen_battery_settings_set_fan_actual(gd.fan_speed);
+    screen_battery_settings_set_fan_last(gd.fan_set);
     screen_settings_set_output_state(gd.inv_on, gd.out_switch);
     if (app.w_bd_bkp)
         (pct_ok && gd.backup_valid) ? lv_label_set_text_fmt(app.w_bd_bkp, "%dh %dm",
