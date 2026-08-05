@@ -33,6 +33,8 @@ idf_component_register(
     "${CMAKE_SOURCE_DIR}/src/debug/invo_debug.c"
     # FOTA
     "${CMAKE_SOURCE_DIR}/src/fota/fota.c"
+    # Renesas BLE co-processor UART
+    "${CMAKE_SOURCE_DIR}/src/ble/renesas_ble.c"
     # Server connectivity test
     "${CMAKE_SOURCE_DIR}/src/server/server_connect.c"
     # Weather
@@ -48,6 +50,7 @@ idf_component_register(
     "${CMAKE_SOURCE_DIR}/src/weather"
     "${CMAKE_SOURCE_DIR}/src/debug"
     "${CMAKE_SOURCE_DIR}/src/server"
+    "${CMAKE_SOURCE_DIR}/src/ble"
     REQUIRES
     esp_timer
     esp_driver_gpio

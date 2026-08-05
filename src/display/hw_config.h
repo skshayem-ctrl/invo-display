@@ -37,3 +37,9 @@
 #define BMS_UART_DE    MB_UART_DE
 #define BMS_BAUD       MB_BAUD
 
+/* Renesas BLE co-processor — UART3, plain UART (no RS485 DE) */
+#define BLE_UART_NUM   UART_NUM_3
+#define BLE_UART_TX    35
+#define BLE_UART_RX    36
+#define BLE_BAUD       115200
+
