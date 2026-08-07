@@ -4,12 +4,12 @@ lv_obj_t *screen_room_create(void)
 {
     lv_obj_t *scr = lv_obj_create(NULL);
     style_screen(scr);
-    lv_obj_add_event_cb(scr, swipe_back_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(scr, swipe_room_cb, LV_EVENT_GESTURE, NULL);
 
     add_detail_header(scr, "Room");
 
-    mk_lbl(scr, LV_SYMBOL_HOME, &lv_font_montserrat_36, C_BLUE,
-           LV_ALIGN_CENTER, 0, -180);
+    lv_obj_t *therm = weather_icon_create(scr, 48, 999); /* WX_ICON_TEMPERATURE */
+    lv_obj_align(therm, LV_ALIGN_CENTER, 0, -180);
 
     mk_lbl(scr, "24\xC2\xB0""C", &lv_font_montserrat_48, C_WHITE,
            LV_ALIGN_CENTER, 0, -112);

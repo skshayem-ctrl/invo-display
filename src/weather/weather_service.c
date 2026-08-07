@@ -248,6 +248,8 @@ static void update_ui(void)
     }
 
     /* main screen bottom row */
+    if (app.w_main_wx_icon)
+        weather_icon_update(app.w_main_wx_icon, gd.wx_code);
     if (app.w_main_wx_tmp)
         lv_label_set_text_fmt(app.w_main_wx_tmp, "%d\xC2\xB0""C", gd.wx_c);
     if (app.w_main_wx_hum)

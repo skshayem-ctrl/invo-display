@@ -49,7 +49,7 @@ lv_obj_t *screen_alerts_create(void)
 {
     lv_obj_t *scr = lv_obj_create(NULL);
     style_screen(scr);
-    lv_obj_add_event_cb(scr, swipe_back_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(scr, swipe_alerts_cb, LV_EVENT_GESTURE, NULL);
 
     mk_lbl(scr, LV_SYMBOL_BELL, &lv_font_montserrat_20, C_AMBER,
            LV_ALIGN_TOP_MID, 0, 28);

@@ -4,7 +4,7 @@ lv_obj_t *screen_weather_create(void)
 {
     lv_obj_t *scr = lv_obj_create(NULL);
     style_screen(scr);
-    lv_obj_add_event_cb(scr, swipe_back_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(scr, swipe_weather_cb, LV_EVENT_GESTURE, NULL);
 
     app.w_wifi_wxd = add_detail_header(scr, "Outdoor");
 
@@ -44,13 +44,13 @@ lv_obj_t *screen_weather_create(void)
     }
 
     /* ── 3 stat rows ─────────────────────────────────────────────── */
-    app.w_wx_wind = mk_stat_row(scr,  +52, "Wind",       "--");
-    app.w_wx_hum  = mk_stat_row(scr, +104, "Humidity",   "--");
+    app.w_wx_wind  = mk_stat_row(scr,  +52, "Wind",         "--");
+    app.w_wx_hum   = mk_stat_row(scr, +104, "Humidity",     "--");
+    app.w_wx_aqpm  = mk_stat_row(scr, +156, "Particulates", "--");
 
     /* Null out unused handles from old design */
     app.w_wx_aqarc   = NULL;
     app.w_wx_aq_desc = NULL;
-    app.w_wx_aqpm    = NULL;
 
     /* Forecast tiles removed — keep handles NULL (weather_service guards) */
     for (int i = 0; i < 7; i++) {

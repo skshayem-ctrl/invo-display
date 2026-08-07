@@ -66,6 +66,7 @@ typedef struct
     lv_obj_t *scr_settings, *scr_settings_general, *scr_batt_settings, *scr_history, *scr_alerts;
     lv_obj_t *scr_grid, *scr_room;
     lv_obj_t *w_wifi;                                         /* main screen */
+    lv_obj_t *w_main_wx_icon;    /* live WMO condition icon in outdoor tile */
     lv_obj_t *w_wifi_bd, *w_wifi_sd, *w_wifi_ld, *w_wifi_wxd; /* detail screens */
     lv_obj_t *w_time, *w_date;
     lv_obj_t *w_sleep_time, *w_sleep_date;
@@ -84,6 +85,10 @@ typedef struct
     lv_obj_t *w_sd_grid_hz, *w_sd_grid_v; /* kept NULL — data now on grid screen */
     lv_obj_t *w_sd_chart;
     lv_chart_series_t *w_sd_ser;
+    lv_obj_t *w_sd_arc;      /* solar detail: generation arc */
+    lv_obj_t *w_sd_arc_val;  /* solar detail: kW text inside arc */
+    lv_obj_t *w_bd_arc;      /* battery detail: SOC arc */
+    lv_obj_t *w_bd_arc_val;  /* battery detail: SOC% text inside arc */
     /* AC input (grid) detail */
     lv_obj_t *w_gd_input, *w_gd_v, *w_gd_hz, *w_gd_state, *w_gd_chg_w;
     lv_obj_t *w_gd_bar;      /* lv_bar: input kW as % of nominal */
@@ -139,6 +144,15 @@ void go_batt_settings_cb(lv_event_t *e);
 void go_history_cb(lv_event_t *e);
 void go_alerts_cb(lv_event_t *e);
 void swipe_back_cb(lv_event_t *e);
+void swipe_load_cb(lv_event_t *e);
+void swipe_batt_cb(lv_event_t *e);
+void swipe_home_cb(lv_event_t *e);
+void swipe_grid_cb(lv_event_t *e);
+void swipe_solar_cb(lv_event_t *e);
+void swipe_settings_cb(lv_event_t *e);
+void swipe_weather_cb(lv_event_t *e);
+void swipe_alerts_cb(lv_event_t *e);
+void swipe_room_cb(lv_event_t *e);
 void go_main_cb(lv_event_t *e);
 void go_batt_cb(lv_event_t *e);
 void go_solar_cb(lv_event_t *e);
@@ -175,3 +189,6 @@ lv_obj_t *screen_room_create(void);
 
 /* weather icon (canvas-drawn) */
 #include "weather_icon.h"
+
+/* energy icons (draw-callback, no external font) */
+#include "energy_icon.h"

@@ -4,7 +4,7 @@ lv_obj_t *screen_grid_create(void)
 {
     lv_obj_t *scr = lv_obj_create(NULL);
     style_screen(scr);
-    lv_obj_add_event_cb(scr, swipe_back_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(scr, swipe_grid_cb, LV_EVENT_GESTURE, NULL);
 
     add_detail_header(scr, "AC Input");
 

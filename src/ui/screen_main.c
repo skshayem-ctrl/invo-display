@@ -4,6 +4,7 @@ lv_obj_t *screen_main_create(void)
 {
     lv_obj_t *scr = lv_obj_create(NULL);
     style_screen(scr);
+    lv_obj_add_event_cb(scr, swipe_home_cb, LV_EVENT_GESTURE, NULL);
 
     /* ── WiFi (top center, tappable) ─────────────────────────────── */
     lv_obj_t *wifi_btn = mk_cont(scr, 50, 40);
@@ -15,16 +16,16 @@ lv_obj_t *screen_main_create(void)
 
     /* ── Time ────────────────────────────────────────────────────── */
     app.w_time = mk_lbl(scr, "10:30", &lv_font_montserrat_48, C_WHITE,
-                        LV_ALIGN_TOP_MID, 0, 70);
+                        LV_ALIGN_TOP_MID, 0, 62);
 
     /* ── Day ─────────────────────────────────────────────────────── */
     app.w_date = mk_lbl(scr, "Monday", &lv_font_montserrat_20, C_GRAY,
-                        LV_ALIGN_TOP_MID, 0, 138);
+                        LV_ALIGN_TOP_MID, 0, 116);
 
     /* ── Settings icon (left, tap) ───────────────────────────────── */
     {
         lv_obj_t *sb = mk_cont(scr, 60, 60);
-        lv_obj_align(sb, LV_ALIGN_CENTER, -229, -190);
+        lv_obj_align(sb, LV_ALIGN_CENTER, -180, -180);
         lv_obj_add_flag(sb, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(sb, go_settings_cb, LV_EVENT_CLICKED, NULL);
         mk_lbl(sb, LV_SYMBOL_SETTINGS, &lv_font_montserrat_20, C_GRAY,
@@ -34,68 +35,49 @@ lv_obj_t *screen_main_create(void)
     /* ── Alerts bell (right, tap) ────────────────────────────────── */
     {
         lv_obj_t *ab = mk_cont(scr, 60, 60);
-        lv_obj_align(ab, LV_ALIGN_CENTER, +229, -190);
+        lv_obj_align(ab, LV_ALIGN_CENTER, +180, -180);
         lv_obj_add_flag(ab, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(ab, go_alerts_cb, LV_EVENT_CLICKED, NULL);
         mk_lbl(ab, LV_SYMBOL_BELL, &lv_font_montserrat_20, C_GRAY,
                LV_ALIGN_CENTER, 0, 0);
     }
 
-    /* ── Solar tile (upper-left, go to solar detail) ─────────────── */
+    /* ── Solar tile (upper-left) ─────────────────────────────────── */
     {
-        lv_obj_t *sc = mk_cont(scr, 120, 68);
-        lv_obj_align(sc, LV_ALIGN_CENTER, -215, -38);
+        lv_obj_t *sc = mk_cont(scr, 120, 76);
+        lv_obj_align(sc, LV_ALIGN_CENTER, -250, -70);
         lv_obj_add_flag(sc, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(sc, go_solar_cb, LV_EVENT_CLICKED, NULL);
 
         lv_obj_t *sr = mk_row(sc);
-        lv_obj_align(sr, LV_ALIGN_TOP_MID, 0, 4);
-        lv_obj_t *si = lv_label_create(sr);
-        lv_label_set_text(si, LV_SYMBOL_CHARGE);
-        lv_obj_set_style_text_color(si, C_SUN, 0);
-        lv_obj_set_style_text_font(si, &lv_font_montserrat_36, 0);
+        lv_obj_align(sr, LV_ALIGN_TOP_MID, 0, 8);
+        energy_icon_create(sr, 32, EICON_SOLAR);
         app.w_solar_val = lv_label_create(sr);
         lv_label_set_text(app.w_solar_val, "--");
         lv_obj_set_style_text_color(app.w_solar_val, C_SUN, 0);
         lv_obj_set_style_text_font(app.w_solar_val, &lv_font_montserrat_24, 0);
 
         mk_lbl(sc, "Solar", &lv_font_montserrat_14, C_GRAY,
-               LV_ALIGN_BOTTOM_MID, 0, -2);
+               LV_ALIGN_BOTTOM_MID, 0, -4);
     }
 
-    /* ── Divider between solar and AC tiles ──────────────────────── */
+    /* ── AC Input tile (lower-left) ──────────────────────────────── */
     {
-        lv_obj_t *d = lv_obj_create(scr);
-        lv_obj_set_size(d, 90, 1);
-        lv_obj_align(d, LV_ALIGN_CENTER, -215, 0);
-        lv_obj_set_style_bg_color(d, C_LINE, 0);
-        lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(d, 0, 0);
-        lv_obj_set_style_pad_all(d, 0, 0);
-        lv_obj_set_style_radius(d, 0, 0);
-        lv_obj_clear_flag(d, LV_OBJ_FLAG_CLICKABLE);
-    }
-
-    /* ── AC Input tile (lower-left, go to grid detail) ───────────── */
-    {
-        lv_obj_t *gc = mk_cont(scr, 120, 68);
-        lv_obj_align(gc, LV_ALIGN_CENTER, -215, +38);
+        lv_obj_t *gc = mk_cont(scr, 120, 76);
+        lv_obj_align(gc, LV_ALIGN_CENTER, -250, +70);
         lv_obj_add_flag(gc, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(gc, go_grid_cb, LV_EVENT_CLICKED, NULL);
 
         lv_obj_t *gr = mk_row(gc);
-        lv_obj_align(gr, LV_ALIGN_TOP_MID, 0, 4);
-        lv_obj_t *gi = lv_label_create(gr);
-        lv_label_set_text(gi, LV_SYMBOL_POWER);
-        lv_obj_set_style_text_color(gi, C_BLUE, 0);
-        lv_obj_set_style_text_font(gi, &lv_font_montserrat_36, 0);
+        lv_obj_align(gr, LV_ALIGN_TOP_MID, 0, 8);
+        energy_icon_create(gr, 32, EICON_GRID);
         app.w_grid_val = lv_label_create(gr);
         lv_label_set_text(app.w_grid_val, "--");
         lv_obj_set_style_text_color(app.w_grid_val, C_BLUE, 0);
         lv_obj_set_style_text_font(app.w_grid_val, &lv_font_montserrat_24, 0);
 
         app.w_grid_status = mk_lbl(gc, "Input", &lv_font_montserrat_14, C_GRAY,
-                                   LV_ALIGN_BOTTOM_MID, 0, -2);
+                                   LV_ALIGN_BOTTOM_MID, 0, -4);
     }
 
     /* ── Battery arc (center) ────────────────────────────────────── */
@@ -120,21 +102,18 @@ lv_obj_t *screen_main_create(void)
         lv_obj_set_style_opa(app.w_batt_arc, LV_OPA_TRANSP, LV_PART_KNOB);
         lv_obj_clear_flag(app.w_batt_arc, LV_OBJ_FLAG_CLICKABLE);
 
-        /* SOC % — large */
         app.w_batt_pct = lv_label_create(ba);
         lv_label_set_text(app.w_batt_pct, "--");
         lv_obj_set_style_text_color(app.w_batt_pct, C_WHITE, 0);
         lv_obj_set_style_text_font(app.w_batt_pct, &lv_font_montserrat_48, 0);
         lv_obj_align(app.w_batt_pct, LV_ALIGN_CENTER, 0, -22);
 
-        /* mode text */
         app.w_batt_mode = lv_label_create(ba);
         lv_label_set_text(app.w_batt_mode, "Idle");
         lv_obj_set_style_text_color(app.w_batt_mode, C_GRAY, 0);
         lv_obj_set_style_text_font(app.w_batt_mode, &lv_font_montserrat_14, 0);
         lv_obj_align(app.w_batt_mode, LV_ALIGN_CENTER, 0, +24);
 
-        /* backup time */
         app.w_batt_backup = lv_label_create(ba);
         lv_label_set_text(app.w_batt_backup, "--");
         lv_obj_set_style_text_color(app.w_batt_backup, C_GREEN, 0);
@@ -142,82 +121,61 @@ lv_obj_t *screen_main_create(void)
         lv_obj_align(app.w_batt_backup, LV_ALIGN_CENTER, 0, +46);
     }
 
-    /* ── Load tile (right, shifted up to make room for DC tile) ──── */
+    /* ── Load tile (upper-right) ─────────────────────────────────── */
     {
-        lv_obj_t *lc = mk_cont(scr, 120, 68);
-        lv_obj_align(lc, LV_ALIGN_CENTER, +215, -38);
+        lv_obj_t *lc = mk_cont(scr, 120, 76);
+        lv_obj_align(lc, LV_ALIGN_CENTER, +250, -70);
         lv_obj_add_flag(lc, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(lc, go_load_cb, LV_EVENT_CLICKED, NULL);
 
         lv_obj_t *lr = mk_row(lc);
-        lv_obj_align(lr, LV_ALIGN_TOP_MID, 0, 6);
-        lv_obj_t *li = lv_label_create(lr);
-        lv_label_set_text(li, LV_SYMBOL_HOME);
-        lv_obj_set_style_text_color(li, C_BLUE, 0);
-        lv_obj_set_style_text_font(li, &lv_font_montserrat_36, 0);
+        lv_obj_align(lr, LV_ALIGN_TOP_MID, 0, 8);
+        energy_icon_create(lr, 32, EICON_LOAD);
         app.w_load_val = lv_label_create(lr);
         lv_label_set_text(app.w_load_val, "--");
         lv_obj_set_style_text_color(app.w_load_val, C_BLUE, 0);
         lv_obj_set_style_text_font(app.w_load_val, &lv_font_montserrat_24, 0);
 
         mk_lbl(lc, "Load", &lv_font_montserrat_14, C_GRAY,
-               LV_ALIGN_BOTTOM_MID, 0, -2);
+               LV_ALIGN_BOTTOM_MID, 0, -4);
     }
 
-    /* ── Divider between Load and DC tile ────────────────────────── */
+    /* ── DC Discharge tile (lower-right, hidden when idle) ───────── */
     {
-        lv_obj_t *div = lv_obj_create(scr);
-        lv_obj_set_size(div, 90, 1);
-        lv_obj_align(div, LV_ALIGN_CENTER, +215, 0);
-        lv_obj_set_style_bg_color(div, C_LINE, 0);
-        lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(div, 0, 0);
-        lv_obj_clear_flag(div, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-    }
-
-    /* ── DC Discharge tile (hidden when battery not discharging) ─── */
-    {
-        app.w_dc_tile = mk_cont(scr, 120, 68);
-        lv_obj_align(app.w_dc_tile, LV_ALIGN_CENTER, +215, +38);
+        app.w_dc_tile = mk_cont(scr, 120, 76);
+        lv_obj_align(app.w_dc_tile, LV_ALIGN_CENTER, +250, +70);
         lv_obj_add_flag(app.w_dc_tile, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(app.w_dc_tile, go_batt_cb, LV_EVENT_CLICKED, NULL);
-        lv_obj_add_flag(app.w_dc_tile, LV_OBJ_FLAG_HIDDEN);
 
         lv_obj_t *dr = mk_row(app.w_dc_tile);
-        lv_obj_align(dr, LV_ALIGN_TOP_MID, 0, 6);
-        lv_obj_t *di = lv_label_create(dr);
-        lv_label_set_text(di, LV_SYMBOL_CHARGE);
-        lv_obj_set_style_text_color(di, C_AMBER, 0);
-        lv_obj_set_style_text_font(di, &lv_font_montserrat_36, 0);
+        lv_obj_align(dr, LV_ALIGN_TOP_MID, 0, 8);
+        energy_icon_create(dr, 32, EICON_DISCHARGE);
         app.w_dc_val = lv_label_create(dr);
         lv_label_set_text(app.w_dc_val, "--");
         lv_obj_set_style_text_color(app.w_dc_val, C_AMBER, 0);
         lv_obj_set_style_text_font(app.w_dc_val, &lv_font_montserrat_24, 0);
 
         mk_lbl(app.w_dc_tile, "DC Out", &lv_font_montserrat_14, C_GRAY,
-               LV_ALIGN_BOTTOM_MID, 0, -2);
+               LV_ALIGN_BOTTOM_MID, 0, -4);
     }
 
-    /* ── Outdoor corner (bottom-left) → weather detail ───────────── */
+    /* ── Outdoor tile (bottom-left) → weather detail ─────────────── */
     {
-        lv_obj_t *oc = mk_cont(scr, 120, 72);
-        lv_obj_align(oc, LV_ALIGN_CENTER, -168, +163);
+        lv_obj_t *oc = mk_cont(scr, 132, 76);
+        lv_obj_align(oc, LV_ALIGN_CENTER, -180, +180);
         lv_obj_add_flag(oc, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(oc, go_wx_cb, LV_EVENT_CLICKED, NULL);
 
         lv_obj_t *row = mk_row(oc);
-        lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 4);
-        lv_obj_t *ico = lv_label_create(row);
-        lv_label_set_text(ico, LV_SYMBOL_GPS);
-        lv_obj_set_style_text_color(ico, C_SUN, 0);
-        lv_obj_set_style_text_font(ico, &lv_font_montserrat_14, 0);
+        lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 7);
+        app.w_main_wx_icon = weather_icon_create(row, 18, 0);
         app.w_main_wx_tmp = lv_label_create(row);
         lv_label_set_text(app.w_main_wx_tmp, "--\xC2\xB0""C");
         lv_obj_set_style_text_color(app.w_main_wx_tmp, C_WHITE, 0);
         lv_obj_set_style_text_font(app.w_main_wx_tmp, &lv_font_montserrat_16, 0);
 
         lv_obj_t *aqrow = mk_row(oc);
-        lv_obj_align(aqrow, LV_ALIGN_BOTTOM_MID, 0, -2);
+        lv_obj_align(aqrow, LV_ALIGN_BOTTOM_MID, 0, -3);
         app.w_main_wx_aqi = lv_label_create(aqrow);
         lv_label_set_text(app.w_main_wx_aqi, "--");
         lv_obj_set_style_text_color(app.w_main_wx_aqi, C_GRAY, 0);
@@ -228,27 +186,24 @@ lv_obj_t *screen_main_create(void)
         lv_obj_set_style_text_font(app.w_main_wx_aqi_cat, &lv_font_montserrat_12, 0);
     }
 
-    /* ── Room corner (bottom-right) → room detail ────────────────── */
+    /* ── Room tile (bottom-right) → room detail ──────────────────── */
     {
-        lv_obj_t *rc = mk_cont(scr, 120, 72);
-        lv_obj_align(rc, LV_ALIGN_CENTER, +168, +163);
+        lv_obj_t *rc = mk_cont(scr, 132, 76);
+        lv_obj_align(rc, LV_ALIGN_CENTER, +180, +180);
         lv_obj_add_flag(rc, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(rc, go_room_cb, LV_EVENT_CLICKED, NULL);
 
         lv_obj_t *row = mk_row(rc);
-        lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 4);
-        lv_obj_t *ico = lv_label_create(row);
-        lv_label_set_text(ico, LV_SYMBOL_HOME);
-        lv_obj_set_style_text_color(ico, C_BLUE, 0);
-        lv_obj_set_style_text_font(ico, &lv_font_montserrat_14, 0);
+        lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 7);
+        weather_icon_create(row, 18, 999); /* WX_ICON_TEMPERATURE */
         lv_obj_t *room_tmp = lv_label_create(row);
         lv_label_set_text(room_tmp, "24\xC2\xB0""C");
         lv_obj_set_style_text_color(room_tmp, C_WHITE, 0);
         lv_obj_set_style_text_font(room_tmp, &lv_font_montserrat_16, 0);
-        app.w_main_wx_hum = NULL; /* no outdoor humidity widget on main screen */
+        app.w_main_wx_hum = NULL;
 
         mk_lbl(rc, "AQI 42 | Good", &lv_font_montserrat_12, C_GREEN,
-               LV_ALIGN_BOTTOM_MID, 0, -2);
+               LV_ALIGN_BOTTOM_MID, 0, -3);
     }
 
     /* ── INVO logo ───────────────────────────────────────────────── */

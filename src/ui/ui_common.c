@@ -198,7 +198,7 @@ lv_obj_t *add_logo(lv_obj_t *par, int yoff)
 
 lv_obj_t *add_detail_header(lv_obj_t *par, const char *title)
 {
-    mk_lbl(par, title, &lv_font_montserrat_16, C_LTGRAY,
+    mk_lbl(par, title, &lv_font_montserrat_20, C_WHITE,
            LV_ALIGN_TOP_MID, 0, 32);
     add_hdiv(par, 58, 560);
 
@@ -225,28 +225,21 @@ lv_obj_t *mk_stat_row(lv_obj_t *par, int yoff, const char *label, const char *va
     lv_obj_t *row = lv_obj_create(par);
     lv_obj_set_size(row, 480, 44);
     lv_obj_align(row, LV_ALIGN_CENTER, 0, yoff);
-    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(row, 0, 0);
-    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_set_style_bg_color(row, C_CARD, 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(row, C_LINE, 0);
+    lv_obj_set_style_border_width(row, 1, 0);
+    lv_obj_set_style_radius(row, 10, 0);
+    lv_obj_set_style_pad_hor(row, 14, 0);
+    lv_obj_set_style_pad_ver(row, 0, 0);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
     mk_lbl(row, label, &lv_font_montserrat_14, C_GRAY, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_t *val = lv_label_create(row);
     lv_label_set_text(val, value);
     lv_obj_set_style_text_color(val, C_WHITE, 0);
-    lv_obj_set_style_text_font(val, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(val, &lv_font_montserrat_16, 0);
     lv_obj_align(val, LV_ALIGN_RIGHT_MID, 0, 0);
-
-    /* divider sits at bottom edge of the 44-px row */
-    lv_obj_t *d = lv_obj_create(par);
-    lv_obj_set_size(d, 480, 1);
-    lv_obj_align(d, LV_ALIGN_CENTER, 0, yoff + 22);
-    lv_obj_set_style_bg_color(d, C_LINE, 0);
-    lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(d, 0, 0);
-    lv_obj_set_style_pad_all(d, 0, 0);
-    lv_obj_set_style_radius(d, 0, 0);
-    lv_obj_clear_flag(d, LV_OBJ_FLAG_CLICKABLE);
 
     return val;
 }
@@ -330,6 +323,110 @@ void swipe_back_cb(lv_event_t *e)
         return;
     if (lv_indev_get_gesture_dir(indev) == LV_DIR_RIGHT)
         lv_screen_load_anim(app.scr_main, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 250, 0, false);
+}
+void swipe_home_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev) return;
+    switch (lv_indev_get_gesture_dir(indev)) {
+        case LV_DIR_RIGHT:
+            if (app.scr_grid) lv_screen_load_anim(app.scr_grid, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+            break;
+        case LV_DIR_LEFT:
+            if (app.scr_load) lv_screen_load_anim(app.scr_load, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+            break;
+        case LV_DIR_BOTTOM:
+            if (app.scr_settings) lv_screen_load_anim(app.scr_settings, LV_SCR_LOAD_ANIM_MOVE_BOTTOM, 200, 0, false);
+            break;
+        case LV_DIR_TOP:
+            if (app.scr_wx) lv_screen_load_anim(app.scr_wx, LV_SCR_LOAD_ANIM_MOVE_TOP, 200, 0, false);
+            break;
+        default: break;
+    }
+}
+void swipe_load_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev) return;
+    switch (lv_indev_get_gesture_dir(indev)) {
+        case LV_DIR_RIGHT:
+            lv_screen_load_anim(app.scr_main, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+            break;
+        case LV_DIR_LEFT:
+            if (app.scr_batt) lv_screen_load_anim(app.scr_batt, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+            break;
+        default: break;
+    }
+}
+void swipe_batt_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev) return;
+    if (lv_indev_get_gesture_dir(indev) == LV_DIR_RIGHT)
+        if (app.scr_load) lv_screen_load_anim(app.scr_load, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+}
+void swipe_grid_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev) return;
+    switch (lv_indev_get_gesture_dir(indev)) {
+        case LV_DIR_RIGHT:
+            if (app.scr_solar) lv_screen_load_anim(app.scr_solar, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+            break;
+        case LV_DIR_LEFT:
+            lv_screen_load_anim(app.scr_main, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+            break;
+        default: break;
+    }
+}
+void swipe_solar_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev) return;
+    if (lv_indev_get_gesture_dir(indev) == LV_DIR_LEFT)
+        if (app.scr_grid) lv_screen_load_anim(app.scr_grid, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+void swipe_settings_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev) return;
+    switch (lv_indev_get_gesture_dir(indev)) {
+        case LV_DIR_BOTTOM:
+            if (app.scr_alerts) lv_screen_load_anim(app.scr_alerts, LV_SCR_LOAD_ANIM_MOVE_BOTTOM, 200, 0, false);
+            break;
+        case LV_DIR_TOP:
+            lv_screen_load_anim(app.scr_main, LV_SCR_LOAD_ANIM_MOVE_TOP, 200, 0, false);
+            break;
+        default: break;
+    }
+}
+void swipe_weather_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev) return;
+    switch (lv_indev_get_gesture_dir(indev)) {
+        case LV_DIR_TOP:
+            if (app.scr_room) lv_screen_load_anim(app.scr_room, LV_SCR_LOAD_ANIM_MOVE_TOP, 200, 0, false);
+            break;
+        case LV_DIR_BOTTOM:
+            lv_screen_load_anim(app.scr_main, LV_SCR_LOAD_ANIM_MOVE_BOTTOM, 200, 0, false);
+            break;
+        default: break;
+    }
+}
+void swipe_alerts_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev) return;
+    if (lv_indev_get_gesture_dir(indev) == LV_DIR_TOP)
+        if (app.scr_settings) lv_screen_load_anim(app.scr_settings, LV_SCR_LOAD_ANIM_MOVE_TOP, 200, 0, false);
+}
+void swipe_room_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev) return;
+    if (lv_indev_get_gesture_dir(indev) == LV_DIR_BOTTOM)
+        if (app.scr_wx) lv_screen_load_anim(app.scr_wx, LV_SCR_LOAD_ANIM_MOVE_BOTTOM, 200, 0, false);
 }
 void wake_cb(lv_event_t *e)
 {
@@ -457,15 +554,13 @@ void data_tick_cb(lv_timer_t *t)
     else if (app.w_load_val)
         lv_label_set_text(app.w_load_val, "--");
 
-    /* DC Discharge tile — visible only when battery is actively discharging */
+    /* DC Discharge tile — always visible; shows kW when discharging, -- otherwise */
     if (app.w_dc_tile) {
-        bool discharging = gd.batt_a < -0.5f;
-        if (discharging) {
-            lv_obj_clear_flag(app.w_dc_tile, LV_OBJ_FLAG_HIDDEN);
+        if (gd.batt_a < -0.5f) {
             float dc_kw = (-gd.batt_a) * gd.batt_v / 1000.0f;
             lv_lbl_setf(app.w_dc_val, "%.1f kw", dc_kw);
-        } else {
-            lv_obj_add_flag(app.w_dc_tile, LV_OBJ_FLAG_HIDDEN);
+        } else if (app.w_dc_val) {
+            lv_label_set_text(app.w_dc_val, "--");
         }
     }
 
@@ -529,6 +624,15 @@ void data_tick_cb(lv_timer_t *t)
             lv_obj_set_style_text_color(app.w_batt_mode, C_GRAY, 0);
         }
     }
+
+    /* battery detail arc */
+    if (app.w_bd_arc) {
+        lv_arc_set_value(app.w_bd_arc, pct_ok ? gd.batt_pct : 0);
+        lv_obj_set_style_arc_color(app.w_bd_arc, arc_col, LV_PART_INDICATOR);
+    }
+    if (app.w_bd_arc_val)
+        pct_ok ? lv_label_set_text_fmt(app.w_bd_arc_val, "%d%%", gd.batt_pct)
+               : lv_label_set_text(app.w_bd_arc_val, "--");
 
     /* ── Battery detail ──────────────────────────────────────────── */
     if (app.w_bd_pct)
@@ -607,6 +711,17 @@ void data_tick_cb(lv_timer_t *t)
     }
 
     /* ── Solar detail ────────────────────────────────────────────── */
+    if (app.w_sd_arc) {
+        int sol_pct = (int)(gd.solar_kw * 20.0f);  /* 5 kW = 100% */
+        if (sol_pct > 100) sol_pct = 100;
+        lv_arc_set_value(app.w_sd_arc, sol_pct);
+        lv_obj_set_style_arc_color(app.w_sd_arc,
+                                   gd.solar_kw > 0 ? C_SUN : C_GRAY,
+                                   LV_PART_INDICATOR);
+    }
+    if (app.w_sd_arc_val)
+        gd.solar_kw > 0 ? lv_label_set_text_fmt(app.w_sd_arc_val, "%.1f kW", gd.solar_kw)
+                        : lv_label_set_text(app.w_sd_arc_val, "--");
     if (app.w_sd_kw)
         gd.solar_kw > 0 ? lv_lbl_setf(app.w_sd_kw, "%.1f kw", gd.solar_kw)
                         : lv_label_set_text(app.w_sd_kw, "--");

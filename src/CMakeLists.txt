@@ -7,6 +7,7 @@ idf_component_register(
     # UI screens
     "${CMAKE_SOURCE_DIR}/src/ui/ui_common.c"
     "${CMAKE_SOURCE_DIR}/src/ui/weather_icon.c"
+    "${CMAKE_SOURCE_DIR}/src/ui/energy_icon.c"
     "${CMAKE_SOURCE_DIR}/src/ui/screen_main.c"
     "${CMAKE_SOURCE_DIR}/src/ui/screen_battery.c"
     "${CMAKE_SOURCE_DIR}/src/ui/screen_battery_settings.c"
