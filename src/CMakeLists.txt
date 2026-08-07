@@ -33,8 +33,8 @@ idf_component_register(
     "${CMAKE_SOURCE_DIR}/src/debug/invo_debug.c"
     # FOTA
     "${CMAKE_SOURCE_DIR}/src/fota/fota.c"
-    # Renesas BLE co-processor UART
-    "${CMAKE_SOURCE_DIR}/src/ble/renesas_ble.c"
+    # nRF BLE co-processor — UART3, LA5 Beacon 300/301
+    "${CMAKE_SOURCE_DIR}/src/ble/nrf_protocol.c"
     # Server connectivity test
     "${CMAKE_SOURCE_DIR}/src/server/server_connect.c"
     # Weather

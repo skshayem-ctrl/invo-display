@@ -9,7 +9,7 @@ static int s_chgv_target = 512; /* tenths of a volt — default 51.2V */
 static lv_obj_t *s_chgv_target_lbl = NULL;
 static lv_obj_t *s_chgv_last_lbl = NULL;
 
-static int s_fan_target = 50;
+static int s_fan_target = 0; /* 0 = AUTO (releases inverter thermal control) */
 static lv_obj_t *s_fan_target_lbl  = NULL;
 static lv_obj_t *s_fan_last_lbl    = NULL;
 static lv_obj_t *s_fan_actual_lbl  = NULL;
@@ -59,27 +59,41 @@ static void chgv_set_cb(lv_event_t *e)
         lv_label_set_text_fmt(s_chgv_last_lbl, "SET : %d.%d V", s_chgv_target / 10, s_chgv_target % 10);
 }
 
+static void fan_target_update_lbl(void)
+{
+    if (!s_fan_target_lbl) return;
+    if (s_fan_target == 0)
+        lv_label_set_text(s_fan_target_lbl, "AUTO");
+    else
+        lv_label_set_text_fmt(s_fan_target_lbl, "%d%%", s_fan_target);
+}
+
 static void fan_minus_cb(lv_event_t *e)
 {
-    if (s_fan_target - 5 >= 0)
+    if (s_fan_target >= 5)
         s_fan_target -= 5;
-    if (s_fan_target_lbl)
-        lv_label_set_text_fmt(s_fan_target_lbl, "%d%%", s_fan_target);
+    fan_target_update_lbl();
 }
 
 static void fan_plus_cb(lv_event_t *e)
 {
-    if (s_fan_target + 5 <= 100)
+    if (s_fan_target == 0)
+        s_fan_target = 5;
+    else if (s_fan_target + 5 <= 100)
         s_fan_target += 5;
-    if (s_fan_target_lbl)
-        lv_label_set_text_fmt(s_fan_target_lbl, "%d%%", s_fan_target);
+    fan_target_update_lbl();
 }
 
 static void fan_set_cb(lv_event_t *e)
 {
-    modbus_inverter_request_fan(s_fan_target);
-    if (s_fan_last_lbl)
-        lv_label_set_text_fmt(s_fan_last_lbl, "SET : %d%%", s_fan_target);
+    int val = (s_fan_target == 0) ? FAN_AUTO : s_fan_target;
+    modbus_inverter_request_fan(val);
+    if (s_fan_last_lbl) {
+        if (s_fan_target == 0)
+            lv_label_set_text(s_fan_last_lbl, "SET : AUTO");
+        else
+            lv_label_set_text_fmt(s_fan_last_lbl, "SET : %d%%", s_fan_target);
+    }
 }
 
 lv_obj_t *screen_battery_settings_create(void)
@@ -245,7 +259,7 @@ lv_obj_t *screen_battery_settings_create(void)
     lv_obj_align(s_fan_last_lbl, LV_ALIGN_TOP_MID, 0, 0);
 
     s_fan_target_lbl = lv_label_create(fcard);
-    lv_label_set_text_fmt(s_fan_target_lbl, "%d%%", s_fan_target);
+    lv_label_set_text(s_fan_target_lbl, "AUTO");
     lv_obj_set_style_text_color(s_fan_target_lbl, C_WHITE, 0);
     lv_obj_set_style_text_font(s_fan_target_lbl, &lv_font_montserrat_20, 0);
     lv_obj_align(s_fan_target_lbl, LV_ALIGN_CENTER, 0, -10);
@@ -324,6 +338,9 @@ void screen_battery_settings_set_fan_actual(int pct)
 
 void screen_battery_settings_set_fan_last(int pct)
 {
-    if (s_fan_last_lbl)
+    if (!s_fan_last_lbl) return;
+    if (pct == 0 || pct == FAN_AUTO)
+        lv_label_set_text(s_fan_last_lbl, "SET : AUTO");
+    else
         lv_label_set_text_fmt(s_fan_last_lbl, "SET : %d%%", pct);
 }

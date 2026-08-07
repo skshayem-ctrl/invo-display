@@ -228,7 +228,7 @@ static void modbus_task(void *arg)
             ESP_LOGI(TAG, "Charge V set → %.1f V", chgv * 0.1f);
         }
 
-        /* Pending fan speed setpoint */
+        /* Pending fan speed setpoint (FAN_AUTO=0xFFFF tries to release inverter thermal control) */
         int fan_req = s_pending_fan;
         if (fan_req >= 0)
         {
@@ -236,7 +236,10 @@ static void modbus_task(void *arg)
             xSemaphoreTake(rs485_mutex, portMAX_DELAY);
             mb_write_reg(REG_FAN_CTRL, (uint16_t)fan_req);
             xSemaphoreGive(rs485_mutex);
-            ESP_LOGI(TAG, "Fan speed set → %d%%", fan_req);
+            if (fan_req == FAN_AUTO)
+                ESP_LOGI(TAG, "Fan → AUTO release (0xFFFF)");
+            else
+                ESP_LOGI(TAG, "Fan speed set → %d%%", fan_req);
         }
 
         /* ── Read register blocks — release mutex between reads so a pending

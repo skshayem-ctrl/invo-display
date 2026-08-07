@@ -13,7 +13,7 @@
 #include "invo_debug.h"
 #include "server_connect.h"
 #include "fota.h"
-#include "renesas_ble.h"
+#include "nrf_protocol.h"
 
 void app_main(void)
 {
@@ -22,7 +22,8 @@ void app_main(void)
 
     invo_debug_init();
     fota_net_init();
-    renesas_ble_init();
+    nrf_init();
+    nrf_rx_task_start();
 
     hal_display_init();   /* LDO + DSI + panel + LEDC backlight + LVGL init */
     hal_touch_init();     /* I2C + GT911 + LVGL indev */
