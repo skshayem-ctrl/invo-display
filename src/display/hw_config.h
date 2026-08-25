@@ -43,3 +43,19 @@
 #define BLE_UART_RX    36
 #define BLE_BAUD       115200
 
+/* HLK-LD2450 mmWave radar — UART2, plain UART (no RS485 DE).
+ * Reuses the GPIO4/5 pins freed by removing the invo_debug UART module. */
+#define LD2450_UART_NUM   UART_NUM_2
+#define LD2450_UART_TX    4
+#define LD2450_UART_RX    5
+#define LD2450_BAUD       256000
+
+/* HLK-LD2450 rated performance envelope (Hi-Link datasheet) — drives the
+ * LED effect's angle/distance mapping, not a tunable knob. */
+#define LD2450_MAX_RANGE_MM  6000
+#define LD2450_FOV_DEG       60
+
+/* WS2812B LED strip — RMT-driven via the espressif/led_strip component. */
+#define LED_STRIP_GPIO        21
+#define LED_STRIP_NUM_LEDS    70
+

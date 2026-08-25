@@ -25,7 +25,6 @@
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
-#include "invo_debug.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -157,17 +156,14 @@ static bool mb_write_reg(uint16_t addr, uint16_t value)
     de_tx();
     vTaskDelay(pdMS_TO_TICKS(1));
     uart_write_bytes(MB_UART_NUM, req, 8);
-    INVO_DBG("UART bytes sent to wire addr=%04X val=%u", addr, value);
     de_rx();
     uint8_t resp[8];
     int got = uart_read_bytes(MB_UART_NUM, resp, 8, pdMS_TO_TICKS(500));
     if (got == 8) {
         ESP_LOGI(TAG, "Write ACK %04X=%u", addr, value);
-        INVO_DBG("UART ACK received from inverter (%d bytes)", got);
         return true;
     }
     ESP_LOGW(TAG, "Write NACK addr=%04X (got %d/8)", addr, got);
-    INVO_DBG("UART NACK from inverter (got %d/8)", got);
     return false;
 }
 
@@ -186,23 +182,17 @@ static void modbus_task(void *arg)
         if (cmd >= 0)
         {
             s_pending_cmd = -1;
-            INVO_DBG("TASK_WAKE modbus task picked up cmd=%s", cmd ? "ON" : "OFF");
             xSemaphoreTake(rs485_mutex, portMAX_DELAY);
             ESP_LOGI(TAG, "WRITE  output %s sending  t=%lldms", cmd ? "ON" : "OFF",
                      esp_timer_get_time() / 1000);
-            INVO_DBG("WRITE output %s sending", cmd ? "ON" : "OFF");
             bool acked = mb_write_reg(REG_OUT_CTRL, cmd ? 1 : 0);
             xSemaphoreGive(rs485_mutex);
             ESP_LOGI(TAG, "Output %s", cmd ? "ON" : "OFF");
             if (acked) {
-                INVO_DBG("ACK received out_switch=%d", cmd);
                 lvgl_acquire();
                 gd.out_switch = cmd;
                 screen_settings_set_output_state(gd.inv_on, cmd);
                 lvgl_release();
-                INVO_DBG("UI updated out_switch=%d", cmd);
-            } else {
-                INVO_DBG("NACK no UI update");
             }
         }
 
@@ -282,7 +272,7 @@ static void modbus_task(void *arg)
         int grid_chg_w = s16(r1[14]);       /* 4031 mains charge power W */
         float grid_hz = r1[15] * 0.01f;
         float inv_out_v = r2[0] * 0.1f;
-        float out_a = s16(r2[1]) * 0.01f;
+        float out_a = s16(r2[1]) * 0.1f;
         int out_w = s16(r2[2]);
         int out_switch = (rc3 >= 0) ? (int)r3[0] : 0; /* 4049 output switch */
         int chg_set_w = (rc3 >= 0) ? (int)r3[5] : 0;  /* 4054 charge power W */

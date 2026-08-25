@@ -8,7 +8,6 @@
 
 #include "lvgl.h"
 #include "ui_common.h"
-#include "invo_debug.h"
 #include "hw_config.h"
 #include "lvgl_port.h"
 
@@ -47,8 +46,7 @@ void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
         data->point.y = point.y;
         data->state = LV_INDEV_STATE_PRESSED;
         if (!s_was_pressed) {
-            INVO_DBG("RAW_TOUCH detected at (%d,%d)", point.x, point.y);
-            s_was_pressed = true;
+s_was_pressed = true;
         }
     }
     else

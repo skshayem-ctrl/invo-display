@@ -30,12 +30,14 @@ idf_component_register(
     "${CMAKE_SOURCE_DIR}/src/inverter/uart_input.c"
     # BMS
     "${CMAKE_SOURCE_DIR}/src/bms/daly_bms.c"
-    # Debug UART
-    "${CMAKE_SOURCE_DIR}/src/debug/invo_debug.c"
     # FOTA
     "${CMAKE_SOURCE_DIR}/src/fota/fota.c"
     # nRF BLE co-processor — UART3, LA5 Beacon 300/301
     "${CMAKE_SOURCE_DIR}/src/ble/nrf_protocol.c"
+    # HLK-LD2450 mmWave radar — UART2
+    "${CMAKE_SOURCE_DIR}/src/radar/ld2450.c"
+    # WS2812B LED effect, driven by the radar
+    "${CMAKE_SOURCE_DIR}/src/led/led_effect.c"
     # Server connectivity test
     "${CMAKE_SOURCE_DIR}/src/server/server_connect.c"
     # Weather
@@ -49,9 +51,10 @@ idf_component_register(
     "${CMAKE_SOURCE_DIR}/src/bms"
     "${CMAKE_SOURCE_DIR}/src/fota"
     "${CMAKE_SOURCE_DIR}/src/weather"
-    "${CMAKE_SOURCE_DIR}/src/debug"
     "${CMAKE_SOURCE_DIR}/src/server"
     "${CMAKE_SOURCE_DIR}/src/ble"
+    "${CMAKE_SOURCE_DIR}/src/radar"
+    "${CMAKE_SOURCE_DIR}/src/led"
     REQUIRES
     esp_timer
     esp_driver_gpio

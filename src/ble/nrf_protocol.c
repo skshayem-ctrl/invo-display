@@ -79,8 +79,9 @@ static size_t la5_build(uint8_t *buf, size_t buf_sz,
  * ModulePayload for Module Code 1:
  *   Opcode(2 LE) | OpcodeLen(2 LE) | OpcodeData(N)
  *
- * OpcodeData for OP_SMART_PLUG_CTRL:
- *   PlugNum(1) | State(1: 0=OFF, 1=ON) | AckReq(1: 0=no ack, 1=ack)
+ * OpcodeData for OP_SMART_PLUG_CTRL (2 bytes):
+ *   byte0 = (AckReq<<7 | PlugNum): bit7=AckReq, bits6:0=PlugNum
+ *   byte1 = State (0=OFF, 1=ON)
  */
 void nrf_send_plug_ctrl(uint8_t plug_num, uint8_t state, uint8_t ack_req)
 {
@@ -109,8 +110,9 @@ void nrf_send_plug_ctrl(uint8_t plug_num, uint8_t state, uint8_t ack_req)
     }
 
     uart_write_bytes(BLE_UART_NUM, frame, frame_len);
-    ESP_LOGD(TAG, "B300 TX plug=%u state=%u ack=%u (%u B)",
-             plug_num, state, ack_req, (unsigned)frame_len);
+    ESP_LOGI(TAG, "B300 TX → plug=%u state=%s ack_req=%u seq=%u (%u B)",
+             plug_num, state ? "ON" : "OFF", ack_req, s_seq - 1, (unsigned)frame_len);
+    ESP_LOG_BUFFER_HEXDUMP(TAG, frame, frame_len, ESP_LOG_DEBUG);
 }
 
 /* ── Beacon 301 RX: nRF54 → ESP32-P4 ─────────────────────────────── */
@@ -154,9 +156,24 @@ static void nrf_rx_task(void *arg)
 
         uint16_t btype = (uint16_t)buf[3] | ((uint16_t)buf[4] << 8);
         uint16_t seq   = (uint16_t)buf[5] | ((uint16_t)buf[6] << 8);
-        ESP_LOGI(TAG, "B301 RX type=0x%04X seq=%u plen=%u", btype, seq, plen);
+        ESP_LOG_BUFFER_HEXDUMP(TAG, buf, expected, ESP_LOG_DEBUG);
 
-        /* TODO: parse module/opcode payload from Beacon 301 */
+        if (btype != BEACON_301_NRF_TO_ESP) {
+            ESP_LOGW(TAG, "B301 RX unexpected type=0x%04X seq=%u", btype, seq);
+        } else if (plen < 10) {
+            ESP_LOGW(TAG, "B301 RX payload too short (%u)", plen);
+        } else {
+            /* payload: nMod(1) | ModCode(2) | ModLen(2) | OrigSeq(2) | PlugNum(1) | State(1) | Result(1) */
+            uint16_t orig_seq;
+            memcpy(&orig_seq, &buf[14], 2);
+            uint8_t plug_num = buf[16];
+            uint8_t rx_state = buf[17];
+            uint8_t result   = buf[18];
+            const char *result_str = (result == 0) ? "OK" :
+                                     (result == 1) ? "NOT_REACHABLE" : "TIMEOUT";
+            ESP_LOGI(TAG, "B301 RX ← seq=%u orig_seq=%u plug=%u state=%s result=%s",
+                     seq, orig_seq, plug_num, rx_state ? "ON" : "OFF", result_str);
+        }
 
         /* Consume the frame */
         memmove(buf, buf + expected, fill - expected);

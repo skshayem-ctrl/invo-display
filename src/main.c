@@ -10,20 +10,25 @@
 #include "weather_service.h"
 #include "uart_input.h"
 #include "daly_bms.h"
-#include "invo_debug.h"
 #include "server_connect.h"
 #include "fota.h"
 #include "nrf_protocol.h"
+#include "ld2450.h"
+#include "led_effect.h"
 
 void app_main(void)
 {
     /* Mark this OTA slot valid so the bootloader won't roll back */
     esp_ota_mark_app_valid_cancel_rollback();
 
-    invo_debug_init();
     fota_net_init();
     nrf_init();
     nrf_rx_task_start();
+
+    ld2450_init();          /* HLK-LD2450 radar — UART2, no WiFi dependency */
+    ld2450_start();
+    led_effect_init();      /* WS2812B strip driven by radar tracking data */
+    led_effect_start();
 
     hal_display_init();   /* LDO + DSI + panel + LEDC backlight + LVGL init */
     hal_touch_init();     /* I2C + GT911 + LVGL indev */

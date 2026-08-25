@@ -176,7 +176,7 @@ lv_obj_t *add_logo(lv_obj_t *par, int yoff)
     lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 0);
 
     lv_obj_t *inv = lv_label_create(row);
-    lv_label_set_text(inv, "INV");
+    lv_label_set_text(inv, " MANAVRA");
     lv_obj_set_style_text_color(inv, C_WHITE, 0);
     lv_obj_set_style_text_font(inv, &lv_font_montserrat_20, 0);
 
