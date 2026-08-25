@@ -54,6 +54,19 @@ jobs:
           sed -i "s/CONFIG_APP_PROJECT_VER=.*/CONFIG_APP_PROJECT_VER=\"${VER}\"/" \
             sdkconfig.defaults
 
+      - name: Write version.json for this build
+        run: |
+          # CMakeLists.txt stamps the app version from version.json — but the
+          # checked-out tag commit still has the *previous* release's
+          # version.json (it's only bumped after a build finishes, below).
+          # Overwrite it here so this build's binary reports its own tag
+          # instead of the previous one.
+          VER="${{ steps.ver.outputs.clean }}"
+          RAW_URL="https://raw.githubusercontent.com/${{ github.repository }}/binaries/invo-esp32.bin"
+          printf '{\n  "version": "%s",\n  "url": "%s"\n}\n' "$VER" "$RAW_URL" > version.json
+          mkdir -p esp32
+          cp version.json esp32/version.json
+
       - name: Build with ESP-IDF Docker image
         run: |
           docker run --rm \
