@@ -173,12 +173,12 @@ lv_obj_t *add_logo(lv_obj_t *par, int yoff)
     lv_obj_align(c, LV_ALIGN_BOTTOM_MID, 0, yoff);
 
     lv_obj_t *row = mk_row(c);
-    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, -2);
 
     lv_obj_t *inv = lv_label_create(row);
-    lv_label_set_text(inv, " MANAVRA");
+    lv_label_set_text(inv, "MANAVRA");
     lv_obj_set_style_text_color(inv, C_WHITE, 0);
-    lv_obj_set_style_text_font(inv, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(inv, &lv_font_montserrat_24, 0);
 
     lv_obj_t *bolt = lv_label_create(row);
     lv_label_set_text(bolt, LV_SYMBOL_CHARGE);
@@ -186,9 +186,9 @@ lv_obj_t *add_logo(lv_obj_t *par, int yoff)
     lv_obj_set_style_text_font(bolt, &lv_font_montserrat_24, 0);
 
     lv_obj_t *tag = lv_label_create(c);
-    lv_label_set_text(tag, "Uninterrupted. Intelligent. Reliable.");
-    lv_obj_set_style_text_color(tag, lv_color_hex(0x4A5A6A), 0);
-    lv_obj_set_style_text_font(tag, &lv_font_montserrat_12, 0);
+    lv_label_set_text(tag, "For Life That Keeps Moving");
+    lv_obj_set_style_text_color(tag, lv_color_make(0, 100, 100), 0);
+    lv_obj_set_style_text_font(tag, &lv_font_montserrat_14, 0);
     lv_obj_align(tag, LV_ALIGN_BOTTOM_MID, 0, 0);
 
     return c;
@@ -246,73 +246,102 @@ lv_obj_t *mk_stat_row(lv_obj_t *par, int yoff, const char *label, const char *va
 
 /* ── navigation callbacks ──────────────────────────────────────── */
 
+/* A tile's CLICKED still fires even when the touch turned into a swipe:
+ * LVGL only suppresses CLICKED when an ancestor object is scrollable
+ * (indev->pointer.scroll_obj != NULL, see lv_indev.c indev_proc_release),
+ * and none of our tiles/screens are scrollable — swipes are handled purely
+ * via LV_EVENT_GESTURE instead. So a press that starts on a tile and then
+ * slides still reaches release as a "click" on that tile. press_moved is
+ * LVGL's own per-press flag for "moved more than scroll_limit (10px) in a
+ * single read"; checking it here is what actually distinguishes a tap from
+ * the first contact of a slide. */
+static bool touch_was_drag(void)
+{
+    lv_indev_t *indev = lv_indev_active();
+    return indev && lv_indev_get_press_moved(indev);
+}
+
 void go_main_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     lv_screen_load_anim(app.scr_main, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
 }
 void go_batt_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (app.scr_batt)
         lv_screen_load_anim(app.scr_batt, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
 }
 void go_solar_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (app.scr_solar)
         lv_screen_load_anim(app.scr_solar, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
 }
 void go_wx_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (app.scr_wx)
         lv_screen_load_anim(app.scr_wx, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
 }
 void go_sleep_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (app.scr_sleep)
         lv_screen_load_anim(app.scr_sleep, LV_SCR_LOAD_ANIM_FADE_IN, 300, 0, false);
 }
 void go_wifi_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (!app.scr_wifi)
         app.scr_wifi = screen_wifi_create();
     lv_screen_load_anim(app.scr_wifi, LV_SCR_LOAD_ANIM_MOVE_TOP, 250, 0, false);
 }
 void go_load_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (app.scr_load)
         lv_screen_load_anim(app.scr_load, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
 }
 void go_grid_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (app.scr_grid)
         lv_screen_load_anim(app.scr_grid, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
 }
 void go_room_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (app.scr_room)
         lv_screen_load_anim(app.scr_room, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
 }
 void go_settings_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (app.scr_settings)
         lv_screen_load_anim(app.scr_settings, LV_SCR_LOAD_ANIM_MOVE_LEFT, 250, 0, false);
 }
 void go_settings_general_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (app.scr_settings_general)
         lv_screen_load_anim(app.scr_settings_general, LV_SCR_LOAD_ANIM_MOVE_LEFT, 250, 0, false);
 }
 void go_batt_settings_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (app.scr_batt_settings)
         lv_screen_load_anim(app.scr_batt_settings, LV_SCR_LOAD_ANIM_MOVE_LEFT, 250, 0, false);
 }
 void go_history_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (app.scr_history)
         lv_screen_load_anim(app.scr_history, LV_SCR_LOAD_ANIM_MOVE_LEFT, 250, 0, false);
 }
 void go_alerts_cb(lv_event_t *e)
 {
+    if (touch_was_drag()) return;
     if (app.scr_alerts)
         lv_screen_load_anim(app.scr_alerts, LV_SCR_LOAD_ANIM_MOVE_LEFT, 250, 0, false);
 }

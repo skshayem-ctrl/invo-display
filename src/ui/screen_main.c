@@ -207,7 +207,7 @@ lv_obj_t *screen_main_create(void)
     }
 
     /* ── INVO logo ───────────────────────────────────────────────── */
-    add_logo(scr, -22);
+    add_logo(scr, -45);
 
     /* ── Overload warning ring (hidden) ─────────────────────────── */
     app.w_warn_ring = lv_arc_create(scr);
