@@ -1,5 +1,4 @@
 #include "ui_common.h"
-#include "uart_input.h"
 #include "wifi_manager.h"
 #include <stdio.h>
 #include <time.h>
@@ -547,23 +546,12 @@ void data_tick_cb(lv_timer_t *t)
     if (app.w_wifi_wxd)
         lv_obj_set_style_text_color(app.w_wifi_wxd, wifi_col, 0);
 
-    if (!uart_batt_valid())
-    {
-        gd.solar_kw = 0.0f;
-        gd.load_kw = 0.0f;
-        gd.batt_v = 0.0f;
-        gd.batt_a = 0.0f;
-        gd.chg_kw = 0.0f;
-        gd.batt_temp = 0.0f;
-        gd.pv_v = 0.0f;
-        gd.pv_a = 0.0f;
-        gd.grid_v = 0.0f;
-        gd.grid_hz = 0.0f;
-        gd.grid_chg_w = 0;
-        gd.out_v = 0.0f;
-        gd.out_hz = 0.0f;
-        gd.out_a = 0.0f;
-    }
+    /* NOTE: used to force solar/load/batt/pv/grid/out fields to 0 here
+     * whenever !uart_batt_valid() (i.e. the last modbus poll cycle failed) —
+     * that ran every UI tick and stomped on modbus_inverter.c's own "keep
+     * last known value on a bad read" handling. Removed so a poll failure
+     * just leaves gd (and therefore every screen reading it) showing
+     * whatever was last successfully read, instead of flashing to blank. */
     gd.today_solar_kwh += gd.solar_kw * (1.0f / 3600.0f);
     gd.today_load_kwh += gd.load_kw * (1.0f / 3600.0f);
 
@@ -773,21 +761,25 @@ void data_tick_cb(lv_timer_t *t)
                                 (lv_value_precise_t)(gd.solar_kw * 10.0f));
 
     /* ── Home load detail ────────────────────────────────────────── */
+    /* Output stats only make sense while the output switch is actually on —
+     * when it's off, blank them regardless of the last-known reading rather
+     * than showing stale "output" numbers for an output that's deliberately off. */
+    bool out_on = (gd.out_switch != 0);
     if (app.w_ld_kw)
         gd.load_kw > 0 ? lv_lbl_setf(app.w_ld_kw, "%.1f kw", gd.load_kw)
                        : lv_label_set_text(app.w_ld_kw, "--");
     if (app.w_ld_out_v)
-        gd.out_v > 0 ? lv_lbl_setf(app.w_ld_out_v, "%.0f V", gd.out_v)
-                     : lv_label_set_text(app.w_ld_out_v, "--");
+        (out_on && gd.out_v > 0) ? lv_lbl_setf(app.w_ld_out_v, "%.0f V", gd.out_v)
+                                 : lv_label_set_text(app.w_ld_out_v, "--");
     if (app.w_ld_out_hz)
-        gd.out_hz > 0 ? lv_lbl_setf(app.w_ld_out_hz, "%.1f Hz", gd.out_hz)
-                      : lv_label_set_text(app.w_ld_out_hz, "--");
+        (out_on && gd.out_hz > 0) ? lv_lbl_setf(app.w_ld_out_hz, "%.1f Hz", gd.out_hz)
+                                  : lv_label_set_text(app.w_ld_out_hz, "--");
     if (app.w_ld_out_w)
-        gd.load_kw > 0 ? lv_lbl_setf(app.w_ld_out_w, "%.0f W", gd.load_kw * 1000.0f)
-                       : lv_label_set_text(app.w_ld_out_w, "--");
+        (out_on && gd.load_kw > 0) ? lv_lbl_setf(app.w_ld_out_w, "%.0f W", gd.load_kw * 1000.0f)
+                                   : lv_label_set_text(app.w_ld_out_w, "--");
     if (app.w_ld_out_a)
-        gd.out_a > 0 ? lv_lbl_setf(app.w_ld_out_a, "%.1f A", gd.out_a)
-                     : lv_label_set_text(app.w_ld_out_a, "--");
+        (out_on && gd.out_a > 0) ? lv_lbl_setf(app.w_ld_out_a, "%.1f A", gd.out_a)
+                                 : lv_label_set_text(app.w_ld_out_a, "--");
     if (app.w_ld_chart && app.w_ld_ser)
         lv_chart_set_next_value(app.w_ld_chart, app.w_ld_ser,
                                 (lv_value_precise_t)(gd.load_kw * 10.0f));
