@@ -274,11 +274,7 @@ static void modbus_task(void *arg)
         float inv_out_v = r2[0] * 0.1f;
         float out_a = s16(r2[1]) * 0.1f;
         int out_w = s16(r2[2]);
-        int out_switch = (rc3 >= 0) ? (int)r3[0] : 0; /* 4049 output switch */
-        int chg_set_w = (rc3 >= 0) ? (int)r3[5] : 0;  /* 4054 charge power W */
-        int chgv_set_v = (rc3 >= 0) ? (int)r3[7] : 0; /* 4056 charge voltage ×0.1V */
-        int fan_speed  = (rc2 >= 0) ? (int)r2[11] : 0; /* 4047 current fan speed 0-100 */
-        int fan_set    = (rc3 >= 0) ? (int)r3[9]  : 0; /* 4058 fan speed setpoint 0-100 */
+        int fan_speed = (int)r2[11]; /* 4047 current fan speed 0-100 — rc2 already guaranteed ok above */
 
         float out_hz = r2[3] * 0.01f;
         uint16_t op_st = r2[4];
@@ -290,14 +286,17 @@ static void modbus_task(void *arg)
         int fault = (op_st >> 11) & 1;
         float out_v = is_bypassing ? raw_grid_v : inv_out_v;
 
-        if ((out_hz > 0.0f && out_hz < 44.0f) || out_hz > 56.0f)
-        {
-            ESP_LOGW(TAG, "Bad out_hz %.2f — discard", out_hz);
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
-            continue;
-        }
+        /* Kept ambiguous on purpose — TODO confirm against real hardware: does
+         * a bad out_hz mean the output relay is genuinely off (a real state,
+         * like grid_hz below), or a corrupted read? Treated as "corrupted
+         * read, keep last known" for now rather than discarding the whole
+         * cycle's already-good solar/battery/grid data. */
+        int out_ok = (out_hz >= 44.0f && out_hz <= 56.0f);
+        if (!out_ok)
+            ESP_LOGW(TAG, "Bad out_hz %.2f — keeping last known output values", out_hz);
 
-        /* Bad grid_hz means AC is gone — zero grid data, keep rest */
+        /* Bad grid_hz means AC is gone — that's a real state change, not a
+         * corrupt read, so zero grid data rather than keep it stale. */
         if (grid_hz < 44.0f || grid_hz > 56.0f)
         {
             ESP_LOGW(TAG, "Bad grid_hz %.2f — grid data zeroed", grid_hz);
@@ -307,39 +306,52 @@ static void modbus_task(void *arg)
         }
 
         int batt_ok = (batt_v >= 28.8f && batt_v <= 57.6f);
+        int temp_ok = (inv_t >= -10.0f && inv_t <= 120.0f);
 
         float grid_v = raw_grid_v >= 80.0f ? raw_grid_v : 0.0f;
 
-        /* ── Write to gd ────────────────────────────────────────── */
+        /* ── Write to gd — only touch a field when this cycle's reading for
+         *    it was actually valid, so a bad/missing read keeps whatever was
+         *    last displayed instead of flashing it to zero. ── */
         lvgl_acquire();
         gd.solar_kw = pv_w > 0 ? (float)pv_w / 1000.0f : 0.0f;
         gd.pv_v = pv_v > 0.0f ? pv_v : 0.0f;
         gd.pv_a = pv_a > 0.0f ? pv_a : 0.0f;
         gd.load_kw = out_w > 20 ? (float)out_w / 1000.0f : 0.0f;
         /* gd.batt_pct owned by BMS task */
-        gd.batt_v = batt_ok ? batt_v : 0.0f;
-        gd.batt_a = batt_ok ? batt_a : 0.0f;
-        gd.out_switch = out_switch;
+        if (batt_ok)
+        {
+            gd.batt_v = batt_v;
+            gd.batt_a = batt_a;
+            gd.voltage = (int)batt_v;
+            gd.current = batt_a;
+        }
+        if (rc3 >= 0)
+        {
+            gd.out_switch = (int)r3[0];  /* 4049 output switch */
+            gd.chg_set_w  = (int)r3[5];  /* 4054 charge power W */
+            gd.chgv_set_v = (int)r3[7];  /* 4056 charge voltage ×0.1V */
+            gd.fan_set    = (int)r3[9];  /* 4058 fan speed setpoint 0-100 */
+        }
         gd.chg_kw = (float)batt_w / 1000.0f;
-        gd.chg_set_w = chg_set_w;
-        gd.chgv_set_v = chgv_set_v;
         gd.fan_speed = fan_speed;
-        gd.fan_set   = fan_set;
-        gd.batt_temp = (-10.0f <= inv_t && inv_t <= 120.0f) ? inv_t : 0.0f;
+        if (temp_ok)
+            gd.batt_temp = inv_t;
         /* backup_h/m/valid owned by BMS task */
         gd.grid_v = grid_v;
         gd.grid_hz = grid_hz;
         gd.grid_a = grid_a;
         gd.grid_chg_w = grid_chg_w;
-        gd.out_v = out_v;
-        gd.out_hz = out_hz;
-        gd.out_a = out_a;
+        if (out_ok)
+        {
+            gd.out_v = out_v;
+            gd.out_hz = out_hz;
+            gd.out_a = out_a;
+        }
         gd.inv_on = inv_on;
         gd.ac_chg = ac_chg;
         gd.bypassing = is_bypassing;
         gd.fault = fault;
-        gd.voltage = (int)(batt_ok ? batt_v : 0.0f);
-        gd.current = batt_a;
         s_valid = true;
         lvgl_release();
 
