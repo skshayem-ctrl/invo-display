@@ -43,6 +43,9 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 CONFIG_SPIRAM_XIP_FROM_PSRAM=y
 CONFIG_CACHE_L2_CACHE_256KB=y
+# 64B L2 line on purpose. With 128B + CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM the ESP-Hosted
+# TX pool (1600 B blocks) is misaligned on every 2nd block, and IDF's sdmmc_io_write_blocks()
+# rejects it: "H_SDIO_DRV: Failed to send data: 258" (esp-hosted-mcu #219). Do not switch back.
 CONFIG_CACHE_L2_CACHE_LINE_64B=y
 CONFIG_LV_OS_FREERTOS=y
 CONFIG_LV_DRAW_SW_DRAW_UNIT_CNT=4

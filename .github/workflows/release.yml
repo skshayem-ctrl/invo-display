@@ -67,6 +67,9 @@ jobs:
           mkdir -p esp32
           cp version.json esp32/version.json
 
+      # NOTE: a former sed patch here (b33e4c3) forced H_SDIO_TX_BLOCK_ONLY_XFER=0. It was removed:
+      # "Failed to send data: 258" is a DMA-alignment rejection, fixed at the root by
+      # CONFIG_CACHE_L2_CACHE_LINE_64B in sdkconfig.defaults. Re-add only if 258 returns.
       - name: Build with ESP-IDF Docker image
         run: |
           docker run --rm \
@@ -76,8 +79,6 @@ jobs:
             espressif/idf:release-v5.3 \
             bash -c "
               idf.py reconfigure &&
-              sed -i 's/#define H_SDIO_TX_BLOCK_ONLY_XFER (1)/#define H_SDIO_TX_BLOCK_ONLY_XFER (0)/' \
-                managed_components/espressif__esp_hosted/host/port/esp/freertos/include/port_esp_hosted_host_config.h &&
               idf.py build
             "
 

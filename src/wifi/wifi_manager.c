@@ -71,10 +71,12 @@ static void hosted_event_handler(void *arg, esp_event_base_t base,
                                  int32_t id, void *data)
 {
     if (id == ESP_HOSTED_EVENT_TRANSPORT_FAILURE) {
-        /* Just log — don't touch s_connected. An SDIO write blip does NOT
-         * mean the C6 lost its AP association. The C6 self-recovers and
-         * WIFI_EVENT_STA_DISCONNECTED will fire if WiFi actually drops. */
-        ESP_LOGW(TAG, "SDIO transport blip (C6 will recover)");
+        /* Just log — don't touch s_connected. This event does NOT mean the C6
+         * lost its AP association; WIFI_EVENT_STA_DISCONNECTED fires if WiFi
+         * actually drops. It is also raised when a single TX write is rejected
+         * (e.g. the DMA-alignment case, esp-hosted-mcu #219) while the bus is
+         * healthy, so don't assume the C6 failed or that it will "recover". */
+        ESP_LOGW(TAG, "ESP-Hosted transport failure event (link state unchanged; see preceding H_SDIO_DRV log)");
     }
 }
 
