@@ -31,4 +31,5 @@ void         fota_net_init(void); /* call once from main before starting tasks *
 void         fota_start(fota_cb_t cb);
 void         fota_cancel(void);
 fota_state_t fota_get_state(void);
+int          fota_get_progress(void); /* download 0-100; only meaningful while FOTA_DOWNLOADING/FOTA_DONE */
 const char  *fota_current_version(void);

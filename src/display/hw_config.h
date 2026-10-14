@@ -50,12 +50,12 @@
 #define LD2450_UART_RX    5
 #define LD2450_BAUD       256000
 
-/* HLK-LD2450 rated performance envelope (Hi-Link datasheet) — drives the
- * LED effect's angle/distance mapping, not a tunable knob. */
+/* HLK-LD2450 rated performance envelope (Hi-Link datasheet) — not a tunable
+ * knob. Currently unused: the LED strip shows battery state, not radar data. */
 #define LD2450_MAX_RANGE_MM  6000
 #define LD2450_FOV_DEG       60
 
 /* WS2812B LED strip — RMT-driven via the espressif/led_strip component. */
 #define LED_STRIP_GPIO        21
-#define LED_STRIP_NUM_LEDS    70
+#define LED_STRIP_NUM_LEDS    80
 

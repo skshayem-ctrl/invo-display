@@ -21,12 +21,14 @@ SemaphoreHandle_t g_net_sem = NULL;
 void fota_net_init(void) { g_net_sem = xSemaphoreCreateMutex(); }
 
 static volatile fota_state_t s_state = FOTA_IDLE;
+static volatile int s_pct = 0;
 static volatile bool s_cancel = false;
 static fota_cb_t s_cb;
 
 static void notify(fota_state_t state, int pct, const char *msg)
 {
     s_state = state;
+    s_pct = pct;
     if (s_cb) s_cb(state, pct, msg);
 }
 
@@ -163,6 +165,7 @@ static esp_err_t ota_http_handler(esp_http_client_event_t *evt)
                     : 0;
                 char msg[32];
                 snprintf(msg, sizeof(msg), "Downloading... %d%%", pct);
+                s_pct = pct;
                 if (ctx->cb) ctx->cb(FOTA_DOWNLOADING, pct, msg);
                 ESP_LOGI(TAG, "OTA chunk: %d/%d (%d%%)",
                          ctx->total_written, ctx->content_length, pct);
@@ -383,4 +386,5 @@ void fota_start(fota_cb_t cb)
 }
 
 fota_state_t fota_get_state(void)       { return s_state; }
+int          fota_get_progress(void)    { return s_pct; }
 const char  *fota_current_version(void) { return esp_app_get_description()->version; }

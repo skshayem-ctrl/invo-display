@@ -27,7 +27,7 @@ void app_main(void)
 
     ld2450_init();          /* HLK-LD2450 radar — UART2, no WiFi dependency */
     ld2450_start();
-    led_effect_init();      /* WS2812B strip driven by radar tracking data */
+    led_effect_init();      /* WS2812B status strip: battery, alerts, OTA (reads gd) */
     led_effect_start();
 
     hal_display_init();   /* LDO + DSI + panel + LEDC backlight + LVGL init */

@@ -1,163 +1,339 @@
 /*
- * led_effect.c — renders HLK-LD2450 target tracking onto a WS2812B
- * strip: each of the sensor's 3 target slots gets a fixed color, placed
- * along the strip by raw left/right offset (x_mm) and dimmed by distance.
+ * led_effect.c — status strip on a WS2812B strip, driven from the shared gd
+ * data plus the FOTA state. The first matching row wins:
  *
- * Position uses x_mm directly (not angle) clamped to LED_POS_MAX_X_MM —
- * the largest lateral offset physically reachable within the sensor's
- * rated FOV+range envelope (LD2450_MAX_RANGE_MM * sin(LD2450_FOV_DEG)).
- * x=0 maps to the strip's center (pixel (N-1)/2).
+ *   inverter fault        red, fast blink
+ *   overload (> 3 kW)     red, breathing
+ *   firmware update       purple bar = download %, purple scanner while waiting
+ *   grid lost / restored  amber / green blink for 3 s (update failed: red, 3 s)
+ *   no BMS data           purple scanner (covers boot, until the BMS first reports)
+ *   critical low          solid red (latched, see CRITICAL_HYST_PCT)
+ *   charging              green pulses moving toward higher pixel numbers
+ *   discharging           blue pulses moving toward lower pixel numbers
+ *   idle                  solid white
  *
- * Brightness is normalized against LED_BRIGHTNESS_RANGE_MM, a *practical*
- * range distinct from the sensor's rated LD2450_MAX_RANGE_MM (6m) — chosen
- * so that normal indoor test/use distances produce a visible swing instead
- * of sitting in the flat part of the curve. See conversation history for
- * the CIE-L*-based derivation of this value.
+ * Pulse speed follows |battery current|. An inverter in bypass puts amber caps
+ * on both ends of the strip over any of the battery rows.
  *
- * Known limitation: the LD2450 gives 3 *anonymous* target slots — it does
- * not guarantee a slot stays assigned to the same physical person as people
- * move or cross paths, so these fixed per-slot colors can visibly swap
- * between people. That's a sensor-protocol limitation, not fixable here.
+ * Battery inputs match the UI's battery mode label (data_tick_cb in
+ * ui_common.c), except that solar charging (batt_a > 0 with ac_chg == 0) counts
+ * as charging here (the label reads "Idle" for it).
+ *
+ * gd keeps its last value when a poll fails, so a dead BMS or inverter link
+ * leaves the strip on the last known state, same as the on-screen values.
  */
 #include "led_effect.h"
-#include "ld2450.h"
 #include "hw_config.h"
+#include "ui_common.h"
+#include "modbus_inverter.h"
+#include "fota.h"
 #include "led_strip.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <math.h>
-#include <string.h>
 
 #define TAG "led_fx"
-#define RENDER_HZ 30
-#define BLOB_HALF_W 1.2f      /* pixels either side of center that get some brightness */
-#define MIN_BRIGHTNESS 8      /* floor so a target at max range isn't fully invisible */
-#define BRIGHTNESS_GAMMA 2.4f /* perceptual correction — see render_tick() comment */
+#define LED_TICK_MS 33 /* ~30 fps, fast enough for the animations */
 
-/* Max lateral offset (mm) physically reachable within the sensor's rated
- * envelope: LD2450_MAX_RANGE_MM * sin(LD2450_FOV_DEG) = 6000 * sin(60°). */
-#define LED_POS_MAX_X_MM 5196.0f
+/* The strip is lit across its whole length, so supply current matters: white
+ * at 255 is ~60 mA per LED (~4.8 A for 80) and scales linearly with this.
+ * Raise it only if the strip's supply can take it. */
+#define LED_BRIGHTNESS 64
 
-/* Practical brightness-normalization range (mm) — deliberately smaller than
- * LD2450_MAX_RANGE_MM (6000mm) so normal indoor test/use distances land in
- * the part of the curve that actually shows a visible swing. */
-#define LED_BRIGHTNESS_RANGE_MM 4500.0f
+/* Same red band as the UI's SOC arc (ui_common.c: below 20% is red). */
+#define CRITICAL_SOC_PCT 20
+#define CRITICAL_HYST_PCT 1 /* stay red until SOC reaches CRITICAL_SOC_PCT + this */
+
+/* Same +-0.5 A deadband the UI uses to tell discharging from idle. */
+#define BATT_CURRENT_DEADBAND_A 0.5f
+
+#define OVERLOAD_KW 3.0f     /* the 3 kW nominal the UI's load bar and alerts use */
+#define GRID_PRESENT_V 50.0f /* same threshold as the UI's "AC input" label */
+#define EVENT_MS 3000        /* how long a grid / update-failed blink lasts */
+#define BYPASS_CAP_PX 4
+
+#define FLOW_WAVELENGTH_PX 16.0f /* distance between pulse heads */
+#define FLOW_MIN_PPS 3.0f        /* pulse speed at ~0 A, pixels per second */
+#define FLOW_MAX_PPS 30.0f       /* ... and at FLOW_FULL_A or more */
+#define FLOW_FULL_A 40.0f
+#define FLOW_FLOOR 0.15f /* brightness between pulses, so the strip never goes dark */
+#define SCAN_PERIOD_MS 1600
+#define SCAN_TAIL_PX 4.0f
+
+typedef enum
+{
+    BATT_NO_DATA,
+    BATT_IDLE,
+    BATT_CHARGING,
+    BATT_DISCHARGING,
+    BATT_CRITICAL,
+} batt_state_t;
 
 typedef struct
 {
     uint8_t r, g, b;
 } rgb_t;
 
-static const rgb_t s_slot_color[3] = {
-    {255, 50, 50}, /* slot 0 — red */
-    {50, 255, 50}, /* slot 1 — green */
-    {50, 50, 255}, /* slot 2 — blue */
+static const rgb_t k_red = {255, 0, 0}, k_green = {0, 255, 0}, k_blue = {0, 0, 255},
+                   k_white = {255, 255, 255}, k_amber = {255, 100, 0}, k_purple = {160, 0, 255};
+
+static const char *const s_state_name[] = {
+    [BATT_NO_DATA] = "waiting for BMS",
+    [BATT_IDLE] = "idle",
+    [BATT_CHARGING] = "charging",
+    [BATT_DISCHARGING] = "discharging",
+    [BATT_CRITICAL] = "critical low",
 };
+
+/* Everything render_frame() looks at, read once per tick. */
+typedef struct
+{
+    int bms_valid, pct, ac_chg, fault, bypassing, inv_valid, fota_state, fota_pct;
+    float batt_a, load_kw, grid_v;
+} snap_t;
 
 static led_strip_handle_t s_strip;
 static bool s_ready;
-
-/* Per-slot EMA so noisy frame-to-frame radar jitter doesn't flicker the
- * strip; x-offset/distance are smoothed independently per slot. */
-static float s_x_ema[3];
-static float s_dist_ema[3];
-static bool s_ema_init[3];
-
-static float clampf(float v, float lo, float hi)
+static bool s_critical; /* latched critical-low flag, see classify() */
+static float s_phase;   /* flow pulse head position, pixels, wraps at FLOW_WAVELENGTH_PX */
+static struct
 {
-    return v < lo ? lo : (v > hi ? hi : v);
+    rgb_t color;
+    const char *name;
+    uint32_t t0;
+    bool on;
+} s_event;
+
+static float clamp01(float v)
+{
+    return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
 }
 
-static void render_tick(void)
+/* Triangle wave 0..1..0 over `period` ms. */
+static float tri(uint32_t t, uint32_t period)
 {
-    ld2450_target_t t[3];
-    ld2450_get_targets(t);
+    float ph = (t % period) / (float)period;
+    return ph < 0.5f ? ph * 2.0f : 2.0f - ph * 2.0f;
+}
 
-    static uint32_t fb[LED_STRIP_NUM_LEDS][3]; /* r,g,b accumulator, additive */
-    memset(fb, 0, sizeof(fb));
+static float blink(uint32_t t, uint32_t period)
+{
+    return (t % period) < period / 2 ? 1.0f : 0.0f;
+}
 
-    /* TEMPORARY — remove once brightness-vs-distance is confirmed on hardware. */
-    static int s_dbg_ctr = 0;
-    bool dbg_log = (++s_dbg_ctr % 15) == 0; /* ~2x/sec at RENDER_HZ=30 */
+/* Set one pixel to colour c at level 0..1 of LED_BRIGHTNESS. */
+static void put(int i, rgb_t c, float level)
+{
+    float s = level * LED_BRIGHTNESS / 255.0f;
+    led_strip_set_pixel(s_strip, i, (uint32_t)(c.r * s + 0.5f), (uint32_t)(c.g * s + 0.5f),
+                        (uint32_t)(c.b * s + 0.5f));
+}
 
-    for (int i = 0; i < 3; i++)
+static void solid(rgb_t c, float level)
+{
+    for (int i = 0; i < LED_STRIP_NUM_LEDS; i++)
+        put(i, c, level);
+}
+
+/* Sawtooth pulses with a bright head and a fading tail behind it. dir > 0
+ * moves them toward higher pixel numbers, dir < 0 toward lower. */
+static void flow(rgb_t c, int dir, float batt_a, float dt)
+{
+    float f = clamp01(fabsf(batt_a) / FLOW_FULL_A);
+    float pps = FLOW_MIN_PPS + (FLOW_MAX_PPS - FLOW_MIN_PPS) * f;
+    s_phase = fmodf(s_phase + pps * dt, FLOW_WAVELENGTH_PX);
+
+    for (int i = 0; i < LED_STRIP_NUM_LEDS; i++)
     {
-        if (!t[i].present)
-        {
-            s_ema_init[i] = false;
-            continue;
-        }
+        float x = dir > 0 ? i : LED_STRIP_NUM_LEDS - 1 - i;
+        float d = fmodf(s_phase - x, FLOW_WAVELENGTH_PX); /* distance behind the head */
+        if (d < 0.0f)
+            d += FLOW_WAVELENGTH_PX;
+        float k = 1.0f - d / FLOW_WAVELENGTH_PX;
+        put(i, c, FLOW_FLOOR + (1.0f - FLOW_FLOOR) * k * k);
+    }
+}
 
-        float xf = (float)t[i].x_mm;
-        float dist = sqrtf((float)t[i].x_mm * t[i].x_mm + (float)t[i].y_mm * t[i].y_mm);
+/* A short comet bouncing end to end. */
+static void scanner(rgb_t c, uint32_t now)
+{
+    float pos = tri(now, SCAN_PERIOD_MS) * (LED_STRIP_NUM_LEDS - 1);
+    for (int i = 0; i < LED_STRIP_NUM_LEDS; i++)
+    {
+        float k = clamp01(1.0f - fabsf(i - pos) / SCAN_TAIL_PX);
+        put(i, c, k * k);
+    }
+}
 
-        if (!s_ema_init[i])
-        {
-            s_x_ema[i] = xf;
-            s_dist_ema[i] = dist;
-            s_ema_init[i] = true;
-        }
+/* Progress bar: full pixels, one partial pixel, the rest off. */
+static void bar(rgb_t c, int pct)
+{
+    float lit = clamp01(pct / 100.0f) * LED_STRIP_NUM_LEDS;
+    for (int i = 0; i < LED_STRIP_NUM_LEDS; i++)
+        put(i, c, clamp01(lit - i));
+}
+
+/* Stateful (s_critical): call from the LED task only. */
+static batt_state_t classify(int bms_valid, int pct, int ac_chg, float batt_a)
+{
+    if (!bms_valid)
+        return BATT_NO_DATA;
+
+    if (pct < CRITICAL_SOC_PCT)
+        s_critical = true;
+    else if (pct >= CRITICAL_SOC_PCT + CRITICAL_HYST_PCT)
+        s_critical = false;
+    if (s_critical)
+        return BATT_CRITICAL;
+
+    if (ac_chg || batt_a > BATT_CURRENT_DEADBAND_A)
+        return BATT_CHARGING;
+    if (batt_a < -BATT_CURRENT_DEADBAND_A)
+        return BATT_DISCHARGING;
+    return BATT_IDLE;
+}
+
+/* Plain reads, no lvgl_acquire(): each field is one aligned word, a snapshot
+ * torn across fields is harmless here, and the LVGL lock is held while LVGL
+ * renders or builds screens, which would freeze the animation. */
+static void snapshot(snap_t *s)
+{
+    s->bms_valid = gd.bms_valid;
+    s->pct = gd.batt_pct;
+    s->ac_chg = gd.ac_chg;
+    s->fault = gd.fault;
+    s->bypassing = gd.bypassing;
+    s->batt_a = gd.batt_a;
+    s->load_kw = gd.load_kw;
+    s->grid_v = gd.grid_v;
+    s->inv_valid = modbus_inverter_valid();
+    s->fota_state = fota_get_state();
+    s->fota_pct = fota_get_progress();
+}
+
+static void trigger(rgb_t c, const char *name, uint32_t now)
+{
+    s_event.color = c;
+    s_event.name = name;
+    s_event.t0 = now;
+    s_event.on = true;
+}
+
+/* Turn changes in grid presence and a failed update into timed blink events. */
+static void track_events(const snap_t *s, uint32_t now)
+{
+    static bool grid_known, grid_prev;
+    static int fota_prev = FOTA_IDLE;
+
+    /* Only compare while the inverter link is good, so boot and link drops
+     * don't look like the grid coming or going. */
+    if (s->inv_valid)
+    {
+        bool grid = s->grid_v > GRID_PRESENT_V;
+        if (grid_known && grid != grid_prev)
+            trigger(grid ? k_green : k_amber, grid ? "grid restored" : "grid lost", now);
+        grid_prev = grid;
+        grid_known = true;
+    }
+
+    if (s->fota_state != fota_prev && (s->fota_state == FOTA_ERROR || s->fota_state == FOTA_NO_WIFI))
+        trigger(k_red, "update failed", now);
+    fota_prev = s->fota_state;
+}
+
+/* Draw one frame into the strip buffer; returns a label for the log. */
+static const char *render_frame(const snap_t *s, uint32_t now, float dt)
+{
+    if (s->fault)
+    {
+        solid(k_red, blink(now, 250));
+        return "inverter fault";
+    }
+    if (s->load_kw > OVERLOAD_KW)
+    {
+        float k = tri(now, 1000);
+        solid(k_red, k * k);
+        return "overload";
+    }
+
+    int fs = s->fota_state;
+    if (fs == FOTA_CHECKING || fs == FOTA_DOWNLOADING || fs == FOTA_VERIFYING || fs == FOTA_DONE)
+    {
+        if (s->fota_pct > 0)
+            bar(k_purple, s->fota_pct);
         else
-        {
-            s_x_ema[i] = s_x_ema[i] * 0.7f + xf * 0.3f;
-            s_dist_ema[i] = s_dist_ema[i] * 0.7f + dist * 0.3f;
-        }
-
-        /* x=0 -> strip center; x=+-LED_POS_MAX_X_MM -> the two strip ends. */
-        float x = clampf(s_x_ema[i], -LED_POS_MAX_X_MM, LED_POS_MAX_X_MM);
-        float pos = (x + LED_POS_MAX_X_MM) / (2.0f * LED_POS_MAX_X_MM) * (LED_STRIP_NUM_LEDS - 1);
-
-        /* WS2812 PWM duty isn't perceived linearly by the eye (Stevens' power
-         * law) — most values above ~80/255 all look "full brightness," so a
-         * linear distance->PWM map only looks dimmer right at the sensor's
-         * rated max range. Gamma-correct so the falloff is visible across a
-         * normal room-scale walk instead of only at the very edge. */
-        float d = clampf(s_dist_ema[i], 0.0f, LED_BRIGHTNESS_RANGE_MM);
-        float brightness = powf(1.0f - (d / LED_BRIGHTNESS_RANGE_MM), BRIGHTNESS_GAMMA);
-        uint8_t level = (uint8_t)clampf(brightness * 255.0f, MIN_BRIGHTNESS, 255.0f);
-
-        if (dbg_log)
-        {
-            ESP_LOGI(TAG, "slot%d raw(x=%d,y=%d) dist_raw=%.0fmm dist_ema=%.0fmm brightness=%.3f level=%u",
-                     i, t[i].x_mm, t[i].y_mm, dist, s_dist_ema[i], brightness, level);
-        }
-
-        int lo = (int)floorf(pos - BLOB_HALF_W);
-        int hi = (int)ceilf(pos + BLOB_HALF_W);
-        if (lo < 0)
-            lo = 0;
-        if (hi > LED_STRIP_NUM_LEDS - 1)
-            hi = LED_STRIP_NUM_LEDS - 1;
-
-        for (int p = lo; p <= hi; p++)
-        {
-            float falloff = clampf(1.0f - fabsf((float)p - pos) / BLOB_HALF_W, 0.0f, 1.0f);
-            uint8_t s = (uint8_t)(level * falloff);
-            fb[p][0] += (uint32_t)s_slot_color[i].r * s / 255;
-            fb[p][1] += (uint32_t)s_slot_color[i].g * s / 255;
-            fb[p][2] += (uint32_t)s_slot_color[i].b * s / 255;
-        }
+            scanner(k_purple, now);
+        return "firmware update";
     }
 
-    for (int p = 0; p < LED_STRIP_NUM_LEDS; p++)
+    if (s_event.on && now - s_event.t0 < EVENT_MS)
     {
-        uint32_t r = fb[p][0] > 255 ? 255 : fb[p][0];
-        uint32_t g = fb[p][1] > 255 ? 255 : fb[p][1];
-        uint32_t b = fb[p][2] > 255 ? 255 : fb[p][2];
-        led_strip_set_pixel(s_strip, p, r, g, b);
+        solid(s_event.color, blink(now - s_event.t0, 500));
+        return s_event.name;
     }
-    led_strip_refresh(s_strip);
+
+    batt_state_t st = classify(s->bms_valid, s->pct, s->ac_chg, s->batt_a);
+    switch (st)
+    {
+    case BATT_NO_DATA:
+        scanner(k_purple, now);
+        break;
+    case BATT_CHARGING:
+        flow(k_green, +1, s->batt_a, dt);
+        break;
+    case BATT_DISCHARGING:
+        flow(k_blue, -1, s->batt_a, dt);
+        break;
+    case BATT_CRITICAL:
+        solid(k_red, 1.0f);
+        break;
+    case BATT_IDLE:
+        solid(k_white, 1.0f);
+        break;
+    }
+
+    if (s->bypassing)
+    {
+        for (int i = 0; i < BYPASS_CAP_PX; i++)
+        {
+            put(i, k_amber, 1.0f);
+            put(LED_STRIP_NUM_LEDS - 1 - i, k_amber, 1.0f);
+        }
+    }
+    return s_state_name[st];
 }
 
 static void led_effect_task(void *arg)
 {
     ESP_LOGI(TAG, "LED effect task started (%d LEDs, GPIO%d)",
              LED_STRIP_NUM_LEDS, LED_STRIP_GPIO);
+
+    TickType_t wake = xTaskGetTickCount();
+    uint32_t last = wake * portTICK_PERIOD_MS;
+    const char *last_what = NULL;
     while (1)
     {
-        render_tick();
-        vTaskDelay(pdMS_TO_TICKS(1000 / RENDER_HZ));
+        uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        float dt = (now - last) / 1000.0f;
+        last = now;
+        if (dt > 0.1f)
+            dt = 0.1f;
+
+        snap_t s;
+        snapshot(&s);
+        track_events(&s, now);
+        const char *what = render_frame(&s, now, dt);
+        if (what != last_what)
+        {
+            ESP_LOGI(TAG, "LED -> %s (soc=%d%% a=%.1fA load=%.1fkW grid=%.0fV fault=%d bypass=%d)",
+                     what, s.pct, s.batt_a, s.load_kw, s.grid_v, s.fault, s.bypassing);
+            last_what = what;
+        }
+
+        /* Re-sent every tick, so a glitched frame can't stick. */
+        led_strip_refresh(s_strip);
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(LED_TICK_MS));
     }
 }
 

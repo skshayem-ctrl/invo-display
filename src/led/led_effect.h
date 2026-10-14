@@ -6,6 +6,8 @@
  * stays disabled rather than failing boot. */
 void led_effect_init(void);
 
-/* Start the render task that maps live LD2450 targets onto the strip.
+/* Start the task that drives the strip: battery state (idle white, charging
+ * green, discharging blue, critical low red), fault/overload/grid alerts and
+ * firmware-update progress. See led_effect.c for the full priority list.
  * No-op if led_effect_init() didn't successfully create the strip. */
 void led_effect_start(void);
